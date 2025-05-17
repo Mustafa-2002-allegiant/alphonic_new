@@ -1,69 +1,75 @@
-// Required Modules
-const express = require("express")
-const cors = require("cors")
-const admin = require("firebase-admin")
-const bcrypt = require("bcryptjs")
-const mysql = require("mysql2/promise")
-const serviceAccount = require("./serviceAccountKey.json")
+// app.js
+const express = require("express");
+const cors = require("cors");
+const bcrypt = require("bcryptjs");
+const { admin, db } = require("./firebase");  // updated import
 
-const app = express()
-const PORT = 4000
+const app = express();
 
-// Firebase Init
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  databaseURL: "https://voicebotai-39243.firebaseio.com",
-})
-const db = admin.firestore()
+// Use Railway’s PORT if provided, otherwise fall back to 4000
+const PORT = process.env.PORT || 4000;
 
-// MySQL Config (VICIdial)
-const vicidialDB = mysql.createPool({
-  host: "your-vicidial-host", // replace
-  user: "your-mysql-user",
-  password: "your-mysql-password",
-  database: "asterisk",
-})
+// Middleware
+app.use(cors());
+app.use(express.json());
 
-app.use(cors())
-app.use(express.json())
+// Hash password
+const hashPassword = async (password) => {
+  const salt = await bcrypt.genSalt(10);
+  return bcrypt.hash(password, salt);
+};
 
-// Helper Functions
-const hashPassword = async (password) => bcrypt.hash(password, await bcrypt.genSalt(10))
-const comparePassword = async (password, hash) => bcrypt.compare(password, hash)
+// Compare password
+const comparePassword = async (password, hash) => {
+  return bcrypt.compare(password, hash);
+};
 
-// Create VCdial Agent
+// Get all companies
+app.get("/companies", async (req, res) => {
+  try {
+    const snapshot = await db.collection("companies").get();
+    const companies = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+    res.json(companies);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch companies", details: err.message });
+  }
+});
+
+// Create new VCdial agent
 app.post("/vcdial-agents", async (req, res) => {
-  const { agentId, password, agentLogin, companyName, isNewCompany } = req.body
-  if (!agentId || !password || !agentLogin || !companyName)
-    return res.status(400).json({ error: "All fields are required" })
+  const { agentId, password, agentLogin, companyName, isNewCompany } = req.body;
+
+  if (!agentId || !password || !agentLogin || !companyName) {
+    return res.status(400).json({ error: "All fields are required" });
+  }
 
   try {
-    const existing = await db.collection("vcdial_agents").where("agentId", "==", agentId).get()
-    if (!existing.empty)
-      return res.status(400).json({ error: "Agent already exists" })
+    const batch = db.batch();
+    const existing = await db.collection("vcdial_agents").where("agentId", "==", agentId).get();
+    if (!existing.empty) return res.status(400).json({ error: "Agent already exists" });
 
-    const hashedPassword = await hashPassword(password)
-    const batch = db.batch()
-
-    let companyRef
+    let companyRef;
     if (isNewCompany) {
-      const exists = await db.collection("companies").where("name", "==", companyName).get()
-      if (!exists.empty)
-        return res.status(400).json({ error: "Company already exists" })
-      companyRef = db.collection("companies").doc()
+      const existingCompany = await db.collection("companies").where("name", "==", companyName).get();
+      if (!existingCompany.empty) return res.status(400).json({ error: "Company already exists" });
+
+      companyRef = db.collection("companies").doc();
       batch.set(companyRef, {
         name: companyName,
         agentLogin,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      })
+      });
     } else {
-      const companySnap = await db.collection("companies").where("name", "==", companyName).get()
-      if (companySnap.empty)
-        return res.status(400).json({ error: "Company not found" })
-      companyRef = companySnap.docs[0].ref
+      const companySnapshot = await db.collection("companies").where("name", "==", companyName).get();
+      if (companySnapshot.empty) return res.status(400).json({ error: "Company not found" });
+      companyRef = companySnapshot.docs[0].ref;
     }
 
-    const agentRef = db.collection("vcdial_agents").doc()
+    const hashedPassword = await hashPassword(password);
+    const agentRef = db.collection("vcdial_agents").doc();
     batch.set(agentRef, {
       agentId,
       password: hashedPassword,
@@ -73,73 +79,194 @@ app.post("/vcdial-agents", async (req, res) => {
       isActive: true,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       passwordLastChanged: admin.firestore.FieldValue.serverTimestamp(),
-    })
+    });
 
-    await batch.commit()
-
-    // Insert into VICIdial DB
-    await vicidialDB.query(
-      `INSERT INTO vicidial_users (user, pass, full_name, user_group, active) VALUES (?, ?, ?, ?, 'Y')`,
-      [agentId, password, agentLogin, "AGENTS"]
-    )
+    await batch.commit();
 
     res.status(201).json({
       success: true,
       message: "Agent created",
-      agent: { id: agentRef.id, agentId, companyName, agentLogin, isActive: true },
-    })
+      agent: {
+        id: agentRef.id,
+        agentId,
+        companyName,
+        agentLogin,
+        isActive: true,
+      },
+    });
   } catch (err) {
-    console.error(err)
-    res.status(500).json({ error: "Server error", details: err.message })
+    res.status(500).json({ error: "Server error", details: err.message });
   }
-})
+});
 
 // Get all VCdial agents
 app.get("/vcdial-agents", async (req, res) => {
   try {
-    const snapshot = await db.collection("vcdial_agents").get()
+    const snapshot = await db.collection("vcdial_agents").get();
     const agents = snapshot.docs.map((doc) => {
-      const data = doc.data()
-      const { password, ...agentData } = data
-      return { id: doc.id, ...agentData }
-    })
-    res.json(agents)
+      const { password, ...agentData } = doc.data();
+      return { id: doc.id, ...agentData };
+    });
+    res.json(agents);
   } catch (err) {
-    res.status(500).json({ error: err.message })
+    res.status(500).json({ error: err.message });
   }
-})
+});
+
+// Get single VCdial agent
+app.get("/vcdial-agents/:agentId", async (req, res) => {
+  try {
+    const docSnap = await db.collection("vcdial_agents").doc(req.params.agentId).get();
+    if (!docSnap.exists) return res.status(404).json({ error: "Agent not found" });
+
+    const { password, ...agentData } = docSnap.data();
+    res.json({ id: docSnap.id, ...agentData });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update VCdial agent
+app.put("/vcdial-agents/:agentId", async (req, res) => {
+  const { agentId, password, companyName, agentLogin, isActive } = req.body;
+  if (!agentId || !companyName || !agentLogin) {
+    return res.status(400).json({ error: "Agent ID, Company Name, and Agent Login are required" });
+  }
+
+  try {
+    const agentRef = db.collection("vcdial_agents").doc(req.params.agentId);
+    const docSnap = await agentRef.get();
+    if (!docSnap.exists) return res.status(404).json({ error: "Agent not found" });
+
+    const batch = db.batch();
+    const companySnapshot = await db.collection("companies").where("name", "==", companyName).get();
+
+    let companyRef;
+    if (companySnapshot.empty) {
+      companyRef = db.collection("companies").doc();
+      batch.set(companyRef, {
+        name: companyName,
+        agentLogin,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } else {
+      companyRef = companySnapshot.docs[0].ref;
+      const companyData = companySnapshot.docs[0].data();
+      if (companyData.agentLogin !== agentLogin) {
+        batch.update(companyRef, {
+          agentLogin,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+    }
+
+    const updateData = {
+      agentId,
+      companyName,
+      agentLogin,
+      companyRef: companyRef.id,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+    if (isActive !== undefined) updateData.isActive = isActive;
+    if (password) {
+      updateData.password = await hashPassword(password);
+      updateData.passwordLastChanged = admin.firestore.FieldValue.serverTimestamp();
+    }
+
+    batch.update(agentRef, updateData);
+    await batch.commit();
+
+    res.json({ success: true, message: "Agent updated successfully" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete VCdial agent
+app.delete("/vcdial-agents/:agentId", async (req, res) => {
+  try {
+    const agentRef = db.collection("vcdial_agents").doc(req.params.agentId);
+    const docSnap = await agentRef.get();
+    if (!docSnap.exists) return res.status(404).json({ error: "Agent not found" });
+
+    await agentRef.delete();
+    res.json({ success: true, message: "Agent deleted successfully" });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Authenticate VCdial agent
+app.post("/vcdial-agents/authenticate", async (req, res) => {
+  const { agentId, password } = req.body;
+  if (!agentId || !password) {
+    return res.status(400).json({ error: "agentId and password are required" });
+  }
+
+  try {
+    const snapshot = await db.collection("vcdial_agents").where("agentId", "==", agentId).get();
+    if (snapshot.empty) return res.status(401).json({ error: "Invalid credentials" });
+
+    const agentDoc = snapshot.docs[0];
+    const agentData = agentDoc.data();
+    const isMatch = await comparePassword(password, agentData.password);
+    if (!isMatch) return res.status(401).json({ error: "Invalid credentials" });
+
+    const { password: _, ...agentInfo } = agentData;
+    res.json({
+      success: true,
+      message: "Authentication successful",
+      agent: { id: agentDoc.id, ...agentInfo },
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Authentication failed", details: err.message });
+  }
+});
+
+// Get active bots
+app.get("/active-bots", async (req, res) => {
+  try {
+    const snapshot = await db
+      .collection("bots")
+      .where("isActive", "==", true)
+      .where("isArchived", "==", false)
+      .get();
+    const bots = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    res.json(bots);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch active bots", details: err.message });
+  }
+});
 
 // Assign bot to agent
 app.post("/bot-assignments", async (req, res) => {
-  const { agentId, botId } = req.body
-  if (!agentId || !botId) return res.status(400).json({ error: "Agent ID and Bot ID are required" })
+  const { agentId, botId } = req.body;
+  if (!agentId || !botId) return res.status(400).json({ error: "Agent ID and Bot ID are required" });
 
   try {
-    const agentDoc = await db.collection("vcdial_agents").doc(agentId).get()
-    if (!agentDoc.exists) return res.status(404).json({ error: "Agent not found" })
+    const agentDoc = await db.collection("vcdial_agents").doc(agentId).get();
+    if (!agentDoc.exists) return res.status(404).json({ error: "Agent not found" });
 
-    const botDoc = await db.collection("bots").doc(botId).get()
-    if (!botDoc.exists || !botDoc.data().isActive || botDoc.data().isArchived) {
-      return res.status(400).json({ error: "Bot is not active or has been archived" })
+    const botDoc = await db.collection("bots").doc(botId).get();
+    if (!botDoc.exists || botDoc.data().isArchived) {
+      return res.status(400).json({ error: "Bot is not active or has been archived" });
     }
 
-    const existingAssignments = await db.collection("bot_assignments")
+    const existingAssignments = await db
+      .collection("bot_assignments")
       .where("agentId", "==", agentId)
       .where("isActive", "==", true)
-      .get()
+      .get();
 
-    const batch = db.batch()
+    const batch = db.batch();
+    existingAssignments.forEach((doc) => {
+      batch.update(doc.ref, {
+        isActive: false,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
 
-    if (!existingAssignments.empty) {
-      existingAssignments.forEach((doc) => {
-        batch.update(doc.ref, {
-          isActive: false,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        })
-      })
-    }
-
-    const assignmentRef = db.collection("bot_assignments").doc()
+    const assignmentRef = db.collection("bot_assignments").doc();
     batch.set(assignmentRef, {
       agentId,
       botId,
@@ -148,31 +275,25 @@ app.post("/bot-assignments", async (req, res) => {
         agentId: agentDoc.data().agentId,
         companyName: agentDoc.data().companyName,
       },
-      botData: {
-        id: botId,
-        name: botDoc.data().name || `Bot ${botId}`,
-      },
+      botData: { id: botId, name: botDoc.data().name || `Bot ${botId}` },
       isActive: true,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    })
+    });
 
-    await batch.commit()
+    await batch.commit();
 
     res.status(201).json({
       success: true,
       message: "Bot assigned to agent successfully",
-      assignment: {
-        id: assignmentRef.id,
-        agentId,
-        botId,
-        createdAt: new Date().toISOString(),
-      },
-    })
+      assignment: { id: assignmentRef.id, agentId, botId, createdAt: new Date().toISOString() },
+    });
   } catch (err) {
-    res.status(500).json({ error: "Failed to assign bot", details: err.message })
+    res.status(500).json({ error: "Failed to assign bot", details: err.message });
   }
-})
+});
 
-// Start server
-app.listen(PORT, () => console.log(`✅ App server running at http://localhost:${PORT}`))
+// Start the server
+app.listen(PORT, () => {
+  console.log(`✅ App server running on port ${PORT}`);
+});

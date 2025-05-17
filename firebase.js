@@ -1,13 +1,21 @@
 // firebase.js
 const admin = require("firebase-admin");
 
-const serviceAccount = require("./serviceAccountKey.json"); // 🔐 Download this from Firebase Console > Project Settings > Service Accounts
+// Load the JSON string from env-var and parse it:
+let serviceAccount;
+try {
+  serviceAccount = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
+} catch (err) {
+  console.error("⚠️  Missing or invalid GOOGLE_SERVICE_ACCOUNT_JSON");
+  process.exit(1);
+}
 
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
-  databaseURL: "https://voicebotai-39243.firebaseio.com" // Replace with your actual database URL
+  databaseURL: "https://voicebotai-39243.firebaseio.com"  // keep your URL here
 });
 
-const db = admin.database();
+// Export the Firestore instance (and admin if you need it elsewhere)
+const db = admin.firestore();
 
-module.exports = db;
+module.exports = { admin, db };
