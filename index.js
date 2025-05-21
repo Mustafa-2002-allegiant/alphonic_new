@@ -1,19 +1,42 @@
 // ✅ index.js — Unified Voicebot + Agent Management Server
-
+require("dotenv").config(); // Load .env variables first
 const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const path = require("path");
-const { streamToVosk } = require("./sttClient");
-const { speakText } = require("./TTSService");
-const { recognizeLiveAudio } = require("./liveSTTHandler");
-const classifyResponse = require("./classifyResponse");
-const { initializeApp, cert } = require("firebase-admin/app");
-const { getFirestore } = require("firebase-admin/firestore");
 
-const serviceAccount = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
-  ? JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON)
-  : require("./serviceAccountKey.json");
+// ✅ Conditionally require STT mock or real
+const { streamToVosk } = process.env.USE_MOCK_STT === "true"
+  ? require("./sttClient.mock")
+  : require("./sttClient");
+
+// ✅ Conditionally require Firebase mock or real
+let db;
+if (process.env.USE_MOCK_FIREBASE === "true") {
+  console.log("🔥 Mock Firebase enabled");
+  const mockFirebase = require("./firebase.mock");
+  db = mockFirebase.getFirestore();
+} else {
+  const { initializeApp, cert } = require("firebase-admin/app");
+  const { getFirestore } = require("firebase-admin/firestore");
+  const serviceAccount = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
+    ? JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON)
+    : require("./serviceAccountKey.json");
+  initializeApp({ credential: cert(serviceAccount) });
+  db = getFirestore();
+}
+
+// ✅ Conditionally require TTS mock or real
+const { speakText } = process.env.USE_MOCK_TTS === "true"
+  ? require("./TTSService.mock")
+  : require("./TTSService");
+
+// ✅ Conditionally require live STT handler mock or real
+const { recognizeLiveAudio } = process.env.USE_MOCK_STT === "true"
+  ? require("./liveSTTHandler.mock")
+  : require("./liveSTTHandler");
+
+const classifyResponse = require("./classifyResponse");
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -22,10 +45,7 @@ app.use("/audio", express.static(path.join(__dirname)));
 app.use(cors());
 app.use(express.json());
 
-// 🔐 Firebase Init
-initializeApp({ credential: cert(serviceAccount) });
-const db = getFirestore();
-
+// 🔐 Password Hashing Helpers
 const hashPassword = async (password) => {
   const salt = await bcrypt.genSalt(10);
   return bcrypt.hash(password, salt);
@@ -33,8 +53,6 @@ const hashPassword = async (password) => {
 const comparePassword = async (password, hash) => {
   return bcrypt.compare(password, hash);
 };
-
-// ✅ All Bot, Agent, Company Routes — Unified
 
 // ---- [ BOT ROUTES ] ----
 app.post("/bot", async (req, res) => {
@@ -171,7 +189,7 @@ app.post("/bot-assignments", async (req, res) => {
   }
 });
 
-// ---- Start ----
+// ---- Start Server ----
 app.listen(PORT, () => {
   console.log(`🚀 Unified server running on port ${PORT}`);
 });
