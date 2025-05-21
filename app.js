@@ -1,15 +1,11 @@
-// app.js
 const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
-const { admin, db } = require("./firebase");  // updated import
+const { admin, db } = require("./firebase");
 
 const app = express();
+const PORT = process.env.PORT || 8080;
 
-// Use Railway’s PORT if provided, otherwise fall back to 4000
-const PORT = process.env.PORT || 4000;
-
-// Middleware
 app.use(cors());
 app.use(express.json());
 
@@ -293,7 +289,6 @@ app.post("/bot-assignments", async (req, res) => {
   }
 });
 
-// Start the server
 app.listen(PORT, () => {
   console.log(`✅ App server running on port ${PORT}`);
 });
