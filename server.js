@@ -4,11 +4,14 @@ const { streamToVosk } = require("./sttClient");
 const { speakText } = require("./TTSService");
 const { initializeApp, cert } = require("firebase-admin/app");
 const { getFirestore } = require("firebase-admin/firestore");
-const serviceAccount = require("./serviceAccountKey.json");
 const classifyResponse = require("./classifyResponse");
 const bcrypt = require("bcryptjs");
 const path = require("path");
 const { recognizeLiveAudio } = require("./liveSTTHandler");
+const serviceAccount = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
+  ? JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON)
+  : require("./serviceAccountKey.json");
+
 
 
 const app = express();
