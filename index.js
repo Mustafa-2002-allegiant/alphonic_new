@@ -1,18 +1,15 @@
-// ✅ index.js — Unified Voicebot + Agent Management Server
-require("dotenv").config(); // Load .env variables first
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const path = require("path");
-const vicidialDB = require("./vicidialDB"); // 🆕 Your new DB connection
+const vicidialDB = require("./vicidialDB");
 
-
-// ✅ Conditionally require STT mock or real
+// Conditionally require mocks or real modules
 const { streamToVosk } = process.env.USE_MOCK_STT === "true"
   ? require("./sttClient.mock")
   : require("./sttClient");
 
-// ✅ Conditionally require Firebase mock or real
 let db;
 if (process.env.USE_MOCK_FIREBASE === "true") {
   console.log("🔥 Mock Firebase enabled");
@@ -28,12 +25,10 @@ if (process.env.USE_MOCK_FIREBASE === "true") {
   db = getFirestore();
 }
 
-// ✅ Conditionally require TTS mock or real
 const { speakText } = process.env.USE_MOCK_TTS === "true"
   ? require("./TTSService.mock")
   : require("./TTSService");
 
-// ✅ Conditionally require live STT handler mock or real
 const { recognizeLiveAudio } = process.env.USE_MOCK_STT === "true"
   ? require("./liveSTTHandler.mock")
   : require("./liveSTTHandler");
@@ -47,7 +42,7 @@ app.use("/audio", express.static(path.join(__dirname)));
 app.use(cors());
 app.use(express.json());
 
-// 🔐 Password Hashing Helpers
+// Password Hashing Helpers
 const hashPassword = async (password) => {
   const salt = await bcrypt.genSalt(10);
   return bcrypt.hash(password, salt);
@@ -57,6 +52,7 @@ const comparePassword = async (password, hash) => {
 };
 
 // ---- [ BOT ROUTES ] ----
+
 app.post("/bot", async (req, res) => {
   const { botId, script, voice } = req.body;
   if (!botId || !script || !Array.isArray(script)) {
@@ -116,20 +112,81 @@ app.post("/start-bot", async (req, res) => {
   }
 });
 
+// ---- [ VCDIAL AGENTS MANAGEMENT ] ----
 
-// ---- [ COMPANY + BOT ASSIGNMENT ] ----
-app.get("/campaigns", async (req, res) => {
+app.post("/vcdial-agents", async (req, res) => {
+  const { agentId, password } = req.body;
+  if (!agentId || !password) return res.status(400).json({ error: "Missing credentials" });
   try {
-    const [rows] = await vicidialDB.query(
-      "SELECT campaign_id, campaign_name FROM vicidial_campaigns WHERE active = 'Y'"
-    );
-    res.json(rows);
+    const exists = await db.collection("vcdial_agents").where("agentId", "==", agentId).get();
+    if (!exists.empty) return res.status(400).json({ error: "Agent already exists" });
+    const hashed = await hashPassword(password);
+    const doc = await db.collection("vcdial_agents").add({
+      agentId,
+      password: hashed,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    });
+    res.status(201).json({ success: true, agent: { id: doc.id, agentId } });
   } catch (err) {
-    console.error("❌ Campaign fetch failed:", err);
-    res.status(500).json({ error: "Failed to fetch campaigns" });
+    res.status(500).json({ error: err.message });
   }
 });
 
+app.get("/vcdial-agents", async (req, res) => {
+  try {
+    const snapshot = await db.collection("vcdial_agents").get();
+    const agents = snapshot.docs.map((doc) => {
+      const { password, ...rest } = doc.data();
+      return { id: doc.id, ...rest };
+    });
+    res.json(agents);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/vcdial-agents/:id", async (req, res) => {
+  const { id } = req.params;
+  const { agentId, password, companyName, agentLogin, isActive } = req.body;
+  try {
+    const updateData = {
+      agentId,
+      companyName,
+      agentLogin,
+      isActive,
+    };
+    if (password) {
+      updateData.password = await hashPassword(password);
+    }
+    await db.collection("vcdial_agents").doc(id).update(updateData);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete("/vcdial-agents/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db.collection("vcdial_agents").doc(id).delete();
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---- [ COMPANY LIST ] ----
+app.get("/companies", async (req, res) => {
+  try {
+    const snap = await db.collection("companies").get();
+    res.json(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---- [ BOT ASSIGNMENT TO AGENT ] ----
 
 app.post("/bot-assignments", async (req, res) => {
   const { agentId, botId } = req.body;
@@ -160,6 +217,20 @@ app.post("/bot-assignments", async (req, res) => {
     res.status(201).json({ success: true, assignmentId: newRef.id });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ---- [ CAMPAIGNS + BOT ASSIGNMENT TO CAMPAIGN ] ----
+
+app.get("/campaigns", async (req, res) => {
+  try {
+    const [rows] = await vicidialDB.query(
+      "SELECT campaign_id, campaign_name FROM vicidial_campaigns WHERE active = 'Y'"
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("❌ Campaign fetch failed:", err);
+    res.status(500).json({ error: "Failed to fetch campaigns" });
   }
 });
 
@@ -197,7 +268,6 @@ app.post("/campaign-bot-assignments", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 // ---- Start Server ----
 app.listen(PORT, () => {
