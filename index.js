@@ -4,6 +4,8 @@ const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const path = require("path");
+const vicidialDB = require("./vicidialDB"); // 🆕 Your new DB connection
+
 
 // ✅ Conditionally require STT mock or real
 const { streamToVosk } = process.env.USE_MOCK_STT === "true"
@@ -114,48 +116,20 @@ app.post("/start-bot", async (req, res) => {
   }
 });
 
-// ---- [ AGENT ROUTES ] ----
-app.post("/vcdial-agents", async (req, res) => {
-  const { agentId, password } = req.body;
-  if (!agentId || !password) return res.status(400).json({ error: "Missing credentials" });
-  try {
-    const exists = await db.collection("vcdial_agents").where("agentId", "==", agentId).get();
-    if (!exists.empty) return res.status(400).json({ error: "Agent already exists" });
-    const hashed = await hashPassword(password);
-    const doc = await db.collection("vcdial_agents").add({
-      agentId,
-      password: hashed,
-      isActive: true,
-      createdAt: new Date().toISOString(),
-    });
-    res.status(201).json({ success: true, agent: { id: doc.id, agentId } });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get("/vcdial-agents", async (req, res) => {
-  try {
-    const snapshot = await db.collection("vcdial_agents").get();
-    const agents = snapshot.docs.map((doc) => {
-      const { password, ...rest } = doc.data();
-      return { id: doc.id, ...rest };
-    });
-    res.json(agents);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // ---- [ COMPANY + BOT ASSIGNMENT ] ----
-app.get("/companies", async (req, res) => {
+app.get("/campaigns", async (req, res) => {
   try {
-    const snap = await db.collection("companies").get();
-    res.json(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    const [rows] = await vicidialDB.query(
+      "SELECT campaign_id, campaign_name FROM vicidial_campaigns WHERE active = 'Y'"
+    );
+    res.json(rows);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("❌ Campaign fetch failed:", err);
+    res.status(500).json({ error: "Failed to fetch campaigns" });
   }
 });
+
 
 app.post("/bot-assignments", async (req, res) => {
   const { agentId, botId } = req.body;
@@ -188,6 +162,42 @@ app.post("/bot-assignments", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+app.post("/campaign-bot-assignments", async (req, res) => {
+  const { campaignId, botId } = req.body;
+  if (!campaignId || !botId) return res.status(400).json({ error: "Campaign ID and Bot ID are required" });
+
+  try {
+    const botDoc = await db.collection("bots").doc(botId).get();
+    if (!botDoc.exists || botDoc.data().isArchived) {
+      return res.status(400).json({ error: "Bot invalid or archived" });
+    }
+
+    const prevAssignments = await db.collection("bot_assignments")
+      .where("campaignId", "==", campaignId)
+      .where("isActive", "==", true)
+      .get();
+
+    const batch = db.batch();
+    prevAssignments.forEach(doc => batch.update(doc.ref, { isActive: false }));
+
+    const newRef = db.collection("bot_assignments").doc();
+    batch.set(newRef, {
+      campaignId,
+      botId,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    });
+
+    await batch.commit();
+    res.status(201).json({ success: true, assignmentId: newRef.id });
+
+  } catch (err) {
+    console.error("❌ Assignment failed:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // ---- Start Server ----
 app.listen(PORT, () => {
