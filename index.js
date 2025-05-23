@@ -3,12 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const bcrypt = require("bcryptjs");
 const path = require("path");
-const vicidialDB = require("./vicidialDB");
-
-// Conditionally require mocks or real modules
-const { streamToVosk } = process.env.USE_MOCK_STT === "true"
-  ? require("./sttClient.mock")
-  : require("./sttClient");
+const fetch = require("node-fetch");
 
 let db;
 if (process.env.USE_MOCK_FIREBASE === "true") {
@@ -24,6 +19,10 @@ if (process.env.USE_MOCK_FIREBASE === "true") {
   initializeApp({ credential: cert(serviceAccount) });
   db = getFirestore();
 }
+
+const { streamToVosk } = process.env.USE_MOCK_STT === "true"
+  ? require("./sttClient.mock")
+  : require("./sttClient");
 
 const { speakText } = process.env.USE_MOCK_TTS === "true"
   ? require("./TTSService.mock")
@@ -187,7 +186,6 @@ app.get("/companies", async (req, res) => {
 });
 
 // ---- [ BOT ASSIGNMENT TO AGENT ] ----
-
 app.post("/bot-assignments", async (req, res) => {
   const { agentId, botId } = req.body;
   if (!agentId || !botId) return res.status(400).json({ error: "Agent ID and Bot ID are required" });
@@ -221,16 +219,16 @@ app.post("/bot-assignments", async (req, res) => {
 });
 
 // ---- [ CAMPAIGNS + BOT ASSIGNMENT TO CAMPAIGN ] ----
-
 app.get("/campaigns", async (req, res) => {
   try {
-    const [rows] = await vicidialDB.query(
-      "SELECT campaign_id, campaign_name FROM vicidial_campaigns WHERE active = 'Y'"
-    );
-    res.json(rows);
+    const response = await fetch("http://138.201.82.40/get_campaigns.php");
+    if (!response.ok) {
+      return res.status(500).json({ error: "Failed to fetch campaigns from PHP API" });
+    }
+    const data = await response.json();
+    res.json(data);
   } catch (err) {
-    console.error("❌ Campaign fetch failed:", err);
-    res.status(500).json({ error: "Failed to fetch campaigns" });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -264,7 +262,6 @@ app.post("/campaign-bot-assignments", async (req, res) => {
     res.status(201).json({ success: true, assignmentId: newRef.id });
 
   } catch (err) {
-    console.error("❌ Assignment failed:", err);
     res.status(500).json({ error: err.message });
   }
 });
