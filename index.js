@@ -7,18 +7,18 @@ const fetch = require("node-fetch");
 
 const db = require("./firebaseConfig"); // Firestore instance from firebaseConfig.js
 
-const { streamToVosk } = process.env.USE_MOCK_STT === "true"
-  ? require("./sttClient.mock")
-  : require("./sttClient");
-
-const { speakText } = process.env.USE_MOCK_TTS === "true"
-  ? require("./TTSService.mock")
-  : require("./TTSService");
-
-const { recognizeLiveAudio } = process.env.USE_MOCK_STT === "true"
-  ? require("./liveSTTHandler.mock")
-  : require("./liveSTTHandler");
-
+const { streamToVosk } =
+  process.env.USE_MOCK_STT === "true"
+    ? require("./sttClient.mock")
+    : require("./sttClient");
+const { speakText } =
+  process.env.USE_MOCK_TTS === "true"
+    ? require("./TTSService.mock")
+    : require("./TTSService");
+const { recognizeLiveAudio } =
+  process.env.USE_MOCK_STT === "true"
+    ? require("./liveSTTHandler.mock")
+    : require("./liveSTTHandler");
 const classifyResponse = require("./classifyResponse");
 
 const app = express();
@@ -33,7 +33,6 @@ const hashPassword = async (password) => {
   const salt = await bcrypt.genSalt(10);
   return bcrypt.hash(password, salt);
 };
-
 const comparePassword = async (password, hash) => {
   return bcrypt.compare(password, hash);
 };
@@ -43,7 +42,9 @@ const comparePassword = async (password, hash) => {
 app.post("/bot", async (req, res) => {
   const { botId, script, voice } = req.body;
   if (!botId || !script || !Array.isArray(script)) {
-    return res.status(400).json({ error: "botId and script (array) required" });
+    return res
+      .status(400)
+      .json({ error: "botId and script (array) required" });
   }
   try {
     await db.collection("bots").doc(botId).set({
@@ -56,7 +57,9 @@ app.post("/bot", async (req, res) => {
     });
     res.status(200).json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: "Failed to save bot", details: err.message });
+    res
+      .status(500)
+      .json({ error: "Failed to save bot", details: err.message });
   }
 });
 
@@ -70,7 +73,9 @@ app.get("/active-bots", async (req, res) => {
     const bots = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     res.json(bots);
   } catch (err) {
-    res.status(500).json({ error: "Failed to fetch active bots", details: err.message });
+    res
+      .status(500)
+      .json({ error: "Failed to fetch active bots", details: err.message });
   }
 });
 
@@ -88,14 +93,19 @@ app.post("/test-voice", async (req, res) => {
 app.post("/start-bot", async (req, res) => {
   try {
     const audioBuffer = Buffer.from(req.body.audio, "base64");
-    const lastBotMessage = req.body.lastLine || "Do you want to speak with a human?";
+    const lastBotMessage =
+      req.body.lastLine || "Do you want to speak with a human?";
     recognizeLiveAudio(audioBuffer, lastBotMessage, async (err, result) => {
       if (err) return res.status(500).json({ error: "STT failed" });
-      await db.collection("bot_sessions").add({ ...result, timestamp: new Date().toISOString() });
+      await db
+        .collection("bot_sessions")
+        .add({ ...result, timestamp: new Date().toISOString() });
       res.json(result);
     });
   } catch (err) {
-    res.status(500).json({ error: "Failed to process audio", details: err.message });
+    res
+      .status(500)
+      .json({ error: "Failed to process audio", details: err.message });
   }
 });
 
@@ -103,10 +113,15 @@ app.post("/start-bot", async (req, res) => {
 
 app.post("/vcdial-agents", async (req, res) => {
   const { agentId, password } = req.body;
-  if (!agentId || !password) return res.status(400).json({ error: "Missing credentials" });
+  if (!agentId || !password)
+    return res.status(400).json({ error: "Missing credentials" });
   try {
-    const exists = await db.collection("vcdial_agents").where("agentId", "==", agentId).get();
-    if (!exists.empty) return res.status(400).json({ error: "Agent already exists" });
+    const exists = await db
+      .collection("vcdial_agents")
+      .where("agentId", "==", agentId)
+      .get();
+    if (!exists.empty)
+      return res.status(400).json({ error: "Agent already exists" });
     const hashed = await hashPassword(password);
     const doc = await db.collection("vcdial_agents").add({
       agentId,
@@ -122,9 +137,13 @@ app.post("/vcdial-agents", async (req, res) => {
 
 app.get("/vcdial-agents", async (req, res) => {
   try {
-    const response = await fetch("https://allegientlead.dialerhosting.com/get_vicidial_agents.php");
+    const response = await fetch(
+      "https://allegientlead.dialerhosting.com/get_vicidial_agents.php"
+    );
     if (!response.ok) {
-      return res.status(500).json({ error: "Failed to fetch agents from VICIdial" });
+      return res
+        .status(500)
+        .json({ error: "Failed to fetch agents from VICIdial" });
     }
     const agentsData = await response.json();
     res.json(agentsData);
@@ -132,16 +151,12 @@ app.get("/vcdial-agents", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 app.put("/vcdial-agents/:id", async (req, res) => {
   const { id } = req.params;
   const { agentId, password, companyName, agentLogin, isActive } = req.body;
   try {
-    const updateData = {
-      agentId,
-      companyName,
-      agentLogin,
-      isActive,
-    };
+    const updateData = { agentId, companyName, agentLogin, isActive };
     if (password) {
       updateData.password = await hashPassword(password);
     }
@@ -166,9 +181,13 @@ app.delete("/vcdial-agents/:id", async (req, res) => {
 
 app.get("/campaigns", async (req, res) => {
   try {
-    const response = await fetch("http://138.201.82.40/get_campaigns.php");
+    const response = await fetch(
+      "http://138.201.82.40/get_campaigns.php"
+    );
     if (!response.ok) {
-      return res.status(500).json({ error: "Failed to fetch campaigns from PHP API" });
+      return res
+        .status(500)
+        .json({ error: "Failed to fetch campaigns from PHP API" });
     }
     const data = await response.json();
     res.json(data);
@@ -179,21 +198,29 @@ app.get("/campaigns", async (req, res) => {
 
 app.post("/campaign-bot-assignments", async (req, res) => {
   const { campaignId, botId } = req.body;
-  if (!campaignId || !botId) return res.status(400).json({ error: "Campaign ID and Bot ID are required" });
+  if (!campaignId || !botId)
+    return res
+      .status(400)
+      .json({ error: "Campaign ID and Bot ID are required" });
 
   try {
     const botDoc = await db.collection("bots").doc(botId).get();
     if (!botDoc.exists || botDoc.data().isArchived) {
-      return res.status(400).json({ error: "Bot invalid or archived" });
+      return res
+        .status(400)
+        .json({ error: "Bot invalid or archived" });
     }
 
-    const prevAssignments = await db.collection("bot_assignments")
+    const prevAssignments = await db
+      .collection("bot_assignments")
       .where("campaignId", "==", campaignId)
       .where("isActive", "==", true)
       .get();
 
     const batch = db.batch();
-    prevAssignments.forEach(doc => batch.update(doc.ref, { isActive: false }));
+    prevAssignments.forEach((doc) =>
+      batch.update(doc.ref, { isActive: false })
+    );
 
     const newRef = db.collection("bot_assignments").doc();
     batch.set(newRef, {
@@ -204,8 +231,9 @@ app.post("/campaign-bot-assignments", async (req, res) => {
     });
 
     await batch.commit();
-    res.status(201).json({ success: true, assignmentId: newRef.id });
-
+    res
+      .status(201)
+      .json({ success: true, assignmentId: newRef.id });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -216,11 +244,13 @@ app.post("/campaign-bot-assignments", async (req, res) => {
 app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
   const { botId, campaignId, agentId } = req.body;
   if (!botId || !campaignId || !agentId) {
-    return res.status(400).json({ error: "botId, campaignId and agentId are required" });
+    return res
+      .status(400)
+      .json({ error: "botId, campaignId and agentId are required" });
   }
 
   try {
-    // Assign bot in Firestore
+    // 1) record assignment in Firestore
     await db.collection("bot_assignments").add({
       botId,
       campaignId,
@@ -229,28 +259,61 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
       createdAt: new Date().toISOString(),
     });
 
-    // Call PHP API to assign agent to campaign in VICIdial DB
-    const phpRes = await fetch("https://allegientlead.dialerhosting.com/assign_agent_to_campaign.php", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agentId, campaignId }),
-    });
-
+    // 2) call PHP endpoint to assign in VICIdial
+    const phpRes = await fetch(
+      "https://allegientlead.dialerhosting.com/assign_agent_to_campaign.php",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId, campaignId }),
+      }
+    );
     if (!phpRes.ok) {
       const errorData = await phpRes.json().catch(() => ({}));
-      throw new Error(errorData.error || "Failed to assign agent to campaign in VICIdial");
+      throw new Error(
+        errorData.error || "Failed to assign agent to campaign in VICIdial"
+      );
     }
-
     const phpResult = await phpRes.json();
 
-    res.json({ success: true, message: `Bot assigned and agent linked: ${phpResult.message}` });
+    res.json({
+      success: true,
+      message: `Bot assigned and agent linked: ${phpResult.message}`,
+    });
   } catch (err) {
     console.error("Error assigning bot and agent:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
+// ---- [ PROXY BOT ASSIGNMENTS JOINED WITH REMOTE AGENTS ] ----
+
+app.get("/bot-assignments", async (req, res) => {
+  try {
+    // pass along optional ?campaign_id=...
+    const qs = req.query.campaign_id
+      ? `?campaign_id=${encodeURIComponent(req.query.campaign_id)}`
+      : "";
+    const phpRes = await fetch(
+      `https://allegientlead.dialerhosting.com/get_bot_assignments.php${qs}`
+    );
+    if (!phpRes.ok) {
+      const text = await phpRes.text();
+      console.error("PHP error:", text);
+      return res
+        .status(500)
+        .json({ error: "Failed to fetch assignments" });
+    }
+    const data = await phpRes.json();
+    res.json(data);
+  } catch (err) {
+    console.error("Proxy error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ---- Start Server ----
+
 app.listen(PORT, () => {
   console.log(`🚀 Unified server running on port ${PORT}`);
 });
