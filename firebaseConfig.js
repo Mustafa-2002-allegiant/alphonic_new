@@ -1,15 +1,14 @@
-// firebaseConfig.js
 const admin = require("firebase-admin");
 
 const serviceAccount = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
   ? JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON)
-  : require("./serviceAccountKey.json"); // your Firebase service account JSON file in root
+  : require("./serviceAccountKey.json");
 
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-  // Optional: databaseURL if needed
-  // databaseURL: "https://your-project-id.firebaseio.com",
-});
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount),
+  });
+}
 
 const db = admin.firestore();
 
