@@ -5,20 +5,7 @@ const bcrypt = require("bcryptjs");
 const path = require("path");
 const fetch = require("node-fetch");
 
-let db;
-if (process.env.USE_MOCK_FIREBASE === "true") {
-  console.log("🔥 Mock Firebase enabled");
-  const mockFirebase = require("./firebase.mock");
-  db = mockFirebase.getFirestore();
-} else {
-  const { initializeApp, cert } = require("firebase-admin/app");
-  const { getFirestore } = require("firebase-admin/firestore");
-  const serviceAccount = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
-    ? JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON)
-    : require("./serviceAccountKey.json");
-  initializeApp({ credential: cert(serviceAccount) });
-  db = getFirestore();
-}
+const db = require("./firebaseConfig"); // Firestore instance from firebaseConfig.js
 
 const { streamToVosk } = process.env.USE_MOCK_STT === "true"
   ? require("./sttClient.mock")
@@ -176,6 +163,7 @@ app.delete("/vcdial-agents/:id", async (req, res) => {
 });
 
 // ---- [ COMPANY LIST ] ----
+
 app.get("/companies", async (req, res) => {
   try {
     const snap = await db.collection("companies").get();
@@ -186,6 +174,7 @@ app.get("/companies", async (req, res) => {
 });
 
 // ---- [ BOT ASSIGNMENT TO AGENT ] ----
+
 app.post("/bot-assignments", async (req, res) => {
   const { agentId, botId } = req.body;
   if (!agentId || !botId) return res.status(400).json({ error: "Agent ID and Bot ID are required" });
@@ -219,6 +208,7 @@ app.post("/bot-assignments", async (req, res) => {
 });
 
 // ---- [ CAMPAIGNS + BOT ASSIGNMENT TO CAMPAIGN ] ----
+
 app.get("/campaigns", async (req, res) => {
   try {
     const response = await fetch("http://138.201.82.40/get_campaigns.php");
