@@ -132,7 +132,6 @@ app.get("/vcdial-agents", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 app.put("/vcdial-agents/:id", async (req, res) => {
   const { id } = req.params;
   const { agentId, password, companyName, agentLogin, isActive } = req.body;
