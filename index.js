@@ -1,3 +1,4 @@
+// index.js
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
@@ -10,7 +11,7 @@ const db = require("./firebaseConfig"); // Firestore instance from firebaseConfi
 const { streamToVosk } =
   process.env.USE_MOCK_STT === "true"
     ? require("./sttClient.mock")
-    : require("./sttClient");
+    : require("./liveSTTHandler");
 const { speakText } =
   process.env.USE_MOCK_TTS === "true"
     ? require("./TTSService.mock")
@@ -259,8 +260,8 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
       createdAt: new Date().toISOString(),
     });
 
-    // 2) call PHP endpoint to assign in VICIdial
-    const phpRes = await fetch(
+    // 2) assign agent in VICIdial
+    const phpAgentRes = await fetch(
       "https://allegientlead.dialerhosting.com/assign_agent_to_campaign.php",
       {
         method: "POST",
@@ -268,17 +269,37 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
         body: JSON.stringify({ agentId, campaignId }),
       }
     );
-    if (!phpRes.ok) {
-      const errorData = await phpRes.json().catch(() => ({}));
+    if (!phpAgentRes.ok) {
+      const err = await phpAgentRes.json().catch(() => ({}));
       throw new Error(
-        errorData.error || "Failed to assign agent to campaign in VICIdial"
+        err.error ||
+          "Failed to assign agent to campaign in VICIdial"
       );
     }
-    const phpResult = await phpRes.json();
+    const agentResult = await phpAgentRes.json();
+
+    // 3) record bot assignment in MySQL
+    const phpBotRes = await fetch(
+      "https://allegientlead.dialerhosting.com/update_bot_assignments.php",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ botId, agentId, campaignId }),
+      }
+    );
+    if (!phpBotRes.ok) {
+      const err = await phpBotRes.json().catch(() => ({}));
+      throw new Error(
+        err.error ||
+          "Failed to insert bot assignment into vicidial_bot_assignments"
+      );
+    }
+    const botResult = await phpBotRes.json();
 
     res.json({
       success: true,
-      message: `Bot assigned and agent linked: ${phpResult.message}`,
+      agentResult,
+      botResult,
     });
   } catch (err) {
     console.error("Error assigning bot and agent:", err);
@@ -290,7 +311,6 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
 
 app.get("/bot-assignments", async (req, res) => {
   try {
-    // pass along optional ?campaign_id=...
     const qs = req.query.campaign_id
       ? `?campaign_id=${encodeURIComponent(req.query.campaign_id)}`
       : "";
