@@ -182,9 +182,7 @@ app.delete("/vcdial-agents/:id", async (req, res) => {
 
 app.get("/campaigns", async (req, res) => {
   try {
-    const response = await fetch(
-      "http://138.201.82.40/get_campaigns.php"
-    );
+    const response = await fetch("http://138.201.82.40/get_campaigns.php");
     if (!response.ok) {
       return res
         .status(500)
@@ -284,22 +282,21 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ botId, agentId, campaignId }),
+        body: JSON.stringify({ botId, campaignId }),
       }
     );
     if (!phpBotRes.ok) {
       const err = await phpBotRes.json().catch(() => ({}));
       throw new Error(
         err.error ||
-          "Failed to insert bot assignment into vicidial_bot_assignments"
+          "Failed to insert bot assignment into vicidial_campaign_agents"
       );
     }
-    const botResult = await phpBotRes.json();
 
     res.json({
       success: true,
       agentResult,
-      botResult,
+      botResult: await phpBotRes.json(),
     });
   } catch (err) {
     console.error("Error assigning bot and agent:", err);
