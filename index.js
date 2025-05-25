@@ -6,7 +6,7 @@ const bcrypt = require("bcryptjs");
 const path = require("path");
 const fetch = require("node-fetch");
 
-const db = require("./firebaseConfig"); // Firestore instance from firebaseConfig.js
+const db = require("./firebaseConfig"); // Firestore instance
 
 const { streamToVosk } =
   process.env.USE_MOCK_STT === "true"
@@ -182,7 +182,9 @@ app.delete("/vcdial-agents/:id", async (req, res) => {
 
 app.get("/campaigns", async (req, res) => {
   try {
-    const response = await fetch("http://138.201.82.40/get_campaigns.php");
+    const response = await fetch(
+      "http://138.201.82.40/get_campaigns.php"
+    );
     if (!response.ok) {
       return res
         .status(500)
@@ -274,7 +276,6 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
           "Failed to assign agent to campaign in VICIdial"
       );
     }
-    const agentResult = await phpAgentRes.json();
 
     // 3) record bot assignment in MySQL
     const phpBotRes = await fetch(
@@ -293,10 +294,11 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
       );
     }
 
+    const botResult = await phpBotRes.json();
+
     res.json({
       success: true,
-      agentResult,
-      botResult: await phpBotRes.json(),
+      botResult
     });
   } catch (err) {
     console.error("Error assigning bot and agent:", err);
@@ -310,6 +312,7 @@ app.get("/bot-assignments", async (req, res) => {
   try {
     const qs = req.query.campaign_id
       ? `?campaign_id=${encodeURIComponent(req.query.campaign_id)}`
+
       : "";
     const phpRes = await fetch(
       `https://allegientlead.dialerhosting.com/get_bot_assignments.php${qs}`
