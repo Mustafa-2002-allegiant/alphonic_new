@@ -253,13 +253,14 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
 
     // 3) record bot assignment in MySQL → vicidial_bot_assignments
     const phpBotRes = await fetch(
-      "https://allegientlead.dialerhosting.com/update_bot_assignments.php",
+      "https://allegientlead.dialerhosting.com/update_bot_assignments.php",  // <— singular
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ botId, campaignId, agentId }),
       }
     );
+    
     const body = await phpBotRes.text();
     if (!phpBotRes.ok) {
       console.error("PHP bot assignment error:", body);
