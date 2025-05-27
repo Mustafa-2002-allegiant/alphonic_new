@@ -300,6 +300,7 @@ app.get("/bot-assignments", async (req, res) => {
 
 // ---- Start Server ----
 
-app.listen(PORT, () => {
+app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Unified server running on port ${PORT}`);
 });
+
