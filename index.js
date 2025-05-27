@@ -28,8 +28,13 @@ const PORT = process.env.PORT || 8080;
 
 app.use("/audio", express.static(path.join(__dirname)));
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
-
+// JSON parser for all other JSON routes, bump to 10 MB just in case
+app.use(express.json({ limit: "10mb" }));
+// RAW parser just for /start-bot → accept up to 10 MB of audio/wav
+app.use(
+  "/start-bot",
+  express.raw({ type: "audio/wav", limit: "10mb" })
+);
 
 // Password Hashing Helpers
 const hashPassword = async (password) => {
@@ -72,7 +77,9 @@ app.get("/active-bots", async (req, res) => {
     const bots = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     res.json(bots);
   } catch (err) {
-    res.status(500).json({ error: "Failed to fetch active bots", details: err.message });
+    res
+      .status(500)
+      .json({ error: "Failed to fetch active bots", details: err.message });
   }
 });
 
@@ -80,18 +87,23 @@ app.post("/test-voice", async (req, res) => {
   const { text, voice } = req.body;
   if (!text) return res.status(400).json({ error: "Text is required" });
   try {
-    await speakText(text, voice || "en-US-Wavenet-F");
-    res.json({ success: true, message: "Voice test completed" });
+    const outputPath = await speakText(text, voice || "en-US-Wavenet-F");
+    // send back the path so client can fetch it via /audio
+    res.json({ success: true, path: path.basename(outputPath) });
   } catch (err) {
     res.status(500).json({ error: err.message || "TTS failed" });
   }
 });
 
+// ---- [ RAW-WAV BOT ROUTE ] ----
+
 app.post("/start-bot", async (req, res) => {
   try {
-    const audioBuffer = Buffer.from(req.body.audio, "base64");
+    // req.body is a Buffer containing the entire WAV file
+    const audioBuffer = req.body;
+    // pull lastLine from querystring: /start-bot?lastLine=...
     const lastBotMessage =
-      req.body.lastLine || "Do you want to speak with a human?";
+      req.query.lastLine || "Do you want to speak with a human?";
     recognizeLiveAudio(audioBuffer, lastBotMessage, async (err, result) => {
       if (err) return res.status(500).json({ error: "STT failed" });
       await db
@@ -100,7 +112,9 @@ app.post("/start-bot", async (req, res) => {
       res.json(result);
     });
   } catch (err) {
-    res.status(500).json({ error: "Failed to process audio", details: err.message });
+    res
+      .status(500)
+      .json({ error: "Failed to process audio", details: err.message });
   }
 });
 
@@ -108,13 +122,15 @@ app.post("/start-bot", async (req, res) => {
 
 app.post("/vcdial-agents", async (req, res) => {
   const { agentId, password } = req.body;
-  if (!agentId || !password) return res.status(400).json({ error: "Missing credentials" });
+  if (!agentId || !password)
+    return res.status(400).json({ error: "Missing credentials" });
   try {
     const exists = await db
       .collection("vcdial_agents")
       .where("agentId", "==", agentId)
       .get();
-    if (!exists.empty) return res.status(400).json({ error: "Agent already exists" });
+    if (!exists.empty)
+      return res.status(400).json({ error: "Agent already exists" });
     const hashed = await hashPassword(password);
     const doc = await db.collection("vcdial_agents").add({
       agentId,
@@ -134,7 +150,9 @@ app.get("/vcdial-agents", async (req, res) => {
       "https://allegientlead.dialerhosting.com/get_vicidial_agents.php"
     );
     if (!response.ok) {
-      return res.status(500).json({ error: "Failed to fetch agents from VICIdial" });
+      return res
+        .status(500)
+        .json({ error: "Failed to fetch agents from VICIdial" });
     }
     const agentsData = await response.json();
     res.json(agentsData);
@@ -174,7 +192,9 @@ app.get("/campaigns", async (req, res) => {
   try {
     const response = await fetch("http://138.201.82.40/get_campaigns.php");
     if (!response.ok) {
-      return res.status(500).json({ error: "Failed to fetch campaigns from PHP API" });
+      return res
+        .status(500)
+        .json({ error: "Failed to fetch campaigns from PHP API" });
     }
     const data = await response.json();
     res.json(data);
@@ -186,12 +206,16 @@ app.get("/campaigns", async (req, res) => {
 app.post("/campaign-bot-assignments", async (req, res) => {
   const { campaignId, botId } = req.body;
   if (!campaignId || !botId)
-    return res.status(400).json({ error: "Campaign ID and Bot ID are required" });
+    return res
+      .status(400)
+      .json({ error: "Campaign ID and Bot ID are required" });
 
   try {
     const botDoc = await db.collection("bots").doc(botId).get();
     if (!botDoc.exists || botDoc.data().isArchived) {
-      return res.status(400).json({ error: "Bot invalid or archived" });
+      return res
+        .status(400)
+        .json({ error: "Bot invalid or archived" });
     }
 
     const prevAssignments = await db
@@ -225,7 +249,9 @@ app.post("/campaign-bot-assignments", async (req, res) => {
 app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
   const { botId, campaignId, agentId } = req.body;
   if (!botId || !campaignId || !agentId) {
-    return res.status(400).json({ error: "botId, campaignId and agentId are required" });
+    return res
+      .status(400)
+      .json({ error: "botId, campaignId and agentId are required" });
   }
 
   try {
@@ -249,7 +275,9 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
     );
     if (!phpAgentRes.ok) {
       const err = await phpAgentRes.json().catch(() => ({}));
-      throw new Error(err.error || "Failed to assign agent to campaign in VICIdial");
+      throw new Error(
+        err.error || "Failed to assign agent to campaign in VICIdial"
+      );
     }
 
     // 3) record bot assignment in MySQL → vicidial_bot_assignments
@@ -261,7 +289,7 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
         body: JSON.stringify({ botId, campaignId, agentId }),
       }
     );
-    
+
     const body = await phpBotRes.text();
     if (!phpBotRes.ok) {
       console.error("PHP bot assignment error:", body);
@@ -289,7 +317,9 @@ app.get("/bot-assignments", async (req, res) => {
     if (!phpRes.ok) {
       const text = await phpRes.text();
       console.error("PHP error:", text);
-      return res.status(500).json({ error: "Failed to fetch assignments" });
+      return res
+        .status(500)
+        .json({ error: "Failed to fetch assignments" });
     }
     const data = await phpRes.json();
     res.json(data);
@@ -301,6 +331,6 @@ app.get("/bot-assignments", async (req, res) => {
 
 // ---- Start Server ----
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Unified server running on port ${PORT}`);
 });
