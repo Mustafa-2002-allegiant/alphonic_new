@@ -26,10 +26,15 @@ const classifyResponse = require("./classifyResponse");
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+// Serve static audio files
 app.use("/audio", express.static(path.join(__dirname)));
+
+// Enable CORS
 app.use(cors());
+
 // JSON parser for all other JSON routes, bump to 10 MB just in case
 app.use(express.json({ limit: "10mb" }));
+
 // RAW parser just for /start-bot → accept up to 10 MB of audio/wav
 app.use(
   "/start-bot",
@@ -77,18 +82,18 @@ app.get("/active-bots", async (req, res) => {
     const bots = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     res.json(bots);
   } catch (err) {
-    res
-      .status(500)
-      .json({ error: "Failed to fetch active bots", details: err.message });
+    res.status(500).json({ error: "Failed to fetch active bots", details: err.message });
   }
 });
+
+// ---- [ TEST VOICE ] ----
 
 app.post("/test-voice", async (req, res) => {
   const { text, voice } = req.body;
   if (!text) return res.status(400).json({ error: "Text is required" });
   try {
     const outputPath = await speakText(text, voice || "en-US-Wavenet-F");
-    // send back the path so client can fetch it via /audio
+    // send back the filename so client can hit /audio/<filename>
     res.json({ success: true, path: path.basename(outputPath) });
   } catch (err) {
     res.status(500).json({ error: err.message || "TTS failed" });
@@ -290,12 +295,12 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
       }
     );
 
-    const body = await phpBotRes.text();
+    const bodyText = await phpBotRes.text();
     if (!phpBotRes.ok) {
-      console.error("PHP bot assignment error:", body);
-      throw new Error(`Failed to insert bot assignment: ${body}`);
+      console.error("PHP bot assignment error:", bodyText);
+      throw new Error(`Failed to insert bot assignment: ${bodyText}`);
     }
-    const botResult = JSON.parse(body);
+    const botResult = JSON.parse(bodyText);
 
     res.json({ success: true, botResult });
   } catch (err) {
