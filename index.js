@@ -1,5 +1,5 @@
 // ───────────────────────────────────────────────────────────────────────────────
-//  index.js  (Fully fixed and ready to copy/paste)
+//  index.js  (Fully revised and ready to copy/paste)
 // ───────────────────────────────────────────────────────────────────────────────
 
 require("dotenv").config();
@@ -162,26 +162,14 @@ app.post("/vcdial-agents", async (req, res) => {
   }
 });
 
-// Proxy endpoint: fetch agents from VICIdial's PHP script, with HTTPS + HTTP fallback
+// Proxy endpoint: fetch agents from VICIdial's PHP script (HTTPS only)
 app.get("/vcdial-agents", async (req, res) => {
   try {
-    // First attempt over HTTPS using the domain
-    let response = await fetch("https://allegientlead.dialerhosting.com/get_vicidial_agents.php");
+    // Directly fetch over HTTPS from the public domain
+    const response = await fetch("https://allegientlead.dialerhosting.com/get_vicidial_agents.php");
     if (!response.ok) {
-      // If the HTTPS request failed, attempt fallback to IP over HTTP
-      console.warn(
-        `/vcdial-agents: Domain fetch failed (status=${response.status}), attempting IP fallback…`
-      );
-      response = await fetch("http://138.201.82.40/get_vicidial_agents.php");
+      throw new Error(`HTTP ${response.status} from VICIdial PHP`);
     }
-
-    if (!response.ok) {
-      // Both attempts failed
-      throw new Error(
-        `Both domain (status=${response.status}) and IP fallback failed`
-      );
-    }
-
     const agentsData = await response.json();
     // Expect agentsData = [ { "user_id":"1001", "agent_login":"agent1", "agent_name":"John Smith" }, … ]
     return res.json(agentsData);
@@ -228,8 +216,7 @@ app.delete("/vcdial-agents/:id", async (req, res) => {
 // Proxy endpoint: fetch campaigns from VICIdial's PHP script
 app.get("/campaigns", async (req, res) => {
   try {
-    // The PHP file name on the VICIdial server is get_campaigns.php
-    // (Ensure this exists at http://138.201.82.40/get_campaigns.php)
+    // Ensure this file exists at http://138.201.82.40/get_campaigns.php
     const response = await fetch("http://138.201.82.40/get_campaigns.php");
     if (!response.ok) {
       return res.status(500).json({ error: "Failed to fetch campaigns from PHP API" });
@@ -303,7 +290,6 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
     });
 
     // 2) Assign agent to VICIdial campaign via PHP
-    //    Ensure assign_agent_to_campaign.php exists at this URL
     const phpAgentRes = await fetch(
       "http://138.201.82.40/assign_agent_to_campaign.php",
       {
@@ -318,7 +304,6 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
     }
 
     // 3) Record bot assignment in VICIdial’s MySQL via PHP
-    //    Ensure update_bot_assignments.php exists at this URL
     const phpBotRes = await fetch(
       "http://138.201.82.40/update_bot_assignments.php",
       {
