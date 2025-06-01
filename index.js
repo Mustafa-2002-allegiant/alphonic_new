@@ -162,7 +162,7 @@ app.post("/vcdial-agents", async (req, res) => {
   }
 });
 
-// Proxy endpoint: fetch agents from VICIdial's PHP script (HTTPS only)
+// Proxy endpoint: fetch agents from VICIdial’s PHP script (HTTPS only)
 app.get("/vcdial-agents", async (req, res) => {
   try {
     // Directly fetch over HTTPS from the public domain
@@ -213,7 +213,7 @@ app.delete("/vcdial-agents/:id", async (req, res) => {
 //  [ CAMPAIGNS + BOT ASSIGNMENT TO CAMPAIGN ]
 // ───────────────────────────────────────────────────────────────────────────────
 
-// Proxy endpoint: fetch campaigns from VICIdial's PHP script
+// Proxy endpoint: fetch campaigns from VICIdial’s PHP script
 app.get("/campaigns", async (req, res) => {
   try {
     // Ensure this file exists at http://138.201.82.40/get_campaigns.php
