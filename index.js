@@ -1,5 +1,5 @@
 // ───────────────────────────────────────────────────────────────────────────────
-//  index.js  (Fully revised and ready to copy/paste; nothing omitted)
+//  index.js  (Syntax‐errors removed; ready to copy/paste)
 // ───────────────────────────────────────────────────────────────────────────────
 
 require("dotenv").config();
@@ -32,7 +32,7 @@ const PORT = process.env.PORT || 8080;
 // Serve static audio files
 app.use("/audio", express.static(path.join(__dirname)));
 
-// Enable CORS globally
+// Enable CORS
 app.use(cors());
 
 // JSON parser for most routes (up to 10 MB)
@@ -81,8 +81,7 @@ app.post("/bot", async (req, res) => {
 });
 
 // Fetch all active (non-archived) bots from Firestore
-app.get("/active-bots", cors(), async (req, res) => {
-  console.log("GET /active-bots called"); // Diagnostic: see this in server console
+app.get("/active-bots", async (req, res) => {
   try {
     const snapshot = await db
       .collection("bots")
@@ -90,10 +89,8 @@ app.get("/active-bots", cors(), async (req, res) => {
       .where("isArchived", "==", false)
       .get();
     const bots = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-    console.log("Active bots data:", bots); // Diagnostic: log the array returned
     return res.json(bots);
   } catch (err) {
-    console.error("Error in /active-bots:", err);
     return res.status(500).json({ error: "Failed to fetch active bots", details: err.message });
   }
 });
