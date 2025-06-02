@@ -1,5 +1,5 @@
 // ───────────────────────────────────────────────────────────────────────────────
-//  index.js  (Syntax errors removed; ready to copy/paste)
+//  index.js  (Full Node/Express backend; ready to copy/paste)
 // ───────────────────────────────────────────────────────────────────────────────
 
 require("dotenv").config();
@@ -29,16 +29,16 @@ const classifyResponse = require("./classifyResponse");
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// Serve static audio files
+// 1) Serve static audio files if you have any
 app.use("/audio", express.static(path.join(__dirname)));
 
-// Enable CORS
+// 2) Enable CORS (so React on localhost:5173 can talk to these endpoints)
 app.use(cors());
 
-// JSON parser for most routes (up to 10 MB)
+// 3) JSON parser for most routes (up to 10 MB)
 app.use(express.json({ limit: "10mb" }));
 
-// RAW parser for /start-bot (audio/wav payloads, up to 10 MB)
+// 4) RAW parser for /start-bot (audio/wav payloads, up to 10 MB)
 app.use(
   "/start-bot",
   express.raw({ type: "audio/wav", limit: "10mb" })
@@ -56,7 +56,7 @@ const comparePassword = async (password, hash) => {
 };
 
 // ───────────────────────────────────────────────────────────────────────────────
-//  [ BOT ROUTES ]
+//  [ BOT ROUTES ]  (Firestore‐backed)
 // ───────────────────────────────────────────────────────────────────────────────
 
 // Create or update a bot in Firestore
@@ -132,7 +132,7 @@ app.post("/start-bot", async (req, res) => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────────
-//  [ VICIdial AGENTS MANAGEMENT ]
+//  [ VICIdial AGENTS MANAGEMENT ]  (Firestore + Node proxy to PHP )
 // ───────────────────────────────────────────────────────────────────────────────
 
 // Add a new VICIdial agent record in Firestore
@@ -165,8 +165,8 @@ app.post("/vcdial-agents", async (req, res) => {
 // Proxy endpoint: fetch agents from VICIdial’s PHP script (HTTPS only)
 app.get("/vcdial-agents", async (req, res) => {
   try {
-    // Directly fetch over HTTPS from the public domain
-    const response = await fetch("https://allegientlead.dialerhosting.com/get_vicidial_agents.php");
+    // Replace with your actual PHP URL for get_vicidial_agents.php:
+    const response = await fetch("http://138.201.82.40/get_vicidial_agents.php");
     if (!response.ok) {
       throw new Error(`HTTP ${response.status} from VICIdial PHP`);
     }
@@ -210,13 +210,13 @@ app.delete("/vcdial-agents/:id", async (req, res) => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────────
-//  [ CAMPAIGNS + BOT ASSIGNMENT TO CAMPAIGN ]
+//  [ CAMPAIGNS + BOT ASSIGNMENT TO CAMPAIGN ]  (Node proxy + Firestore logic)
 // ───────────────────────────────────────────────────────────────────────────────
 
 // Proxy endpoint: fetch campaigns from VICIdial’s PHP script
 app.get("/campaigns", async (req, res) => {
   try {
-    // Ensure this file exists at http://138.201.82.40/get_campaigns.php
+    // Replace with your actual PHP URL for get_campaigns.php:
     const response = await fetch("http://138.201.82.40/get_campaigns.php");
     if (!response.ok) {
       return res.status(500).json({ error: "Failed to fetch campaigns from PHP API" });
@@ -269,7 +269,7 @@ app.post("/campaign-bot-assignments", async (req, res) => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────────
-//  [ ASSIGN BOT TO AGENT AND CAMPAIGN IN VICIdial ]
+//  [ ASSIGN BOT TO AGENT AND CAMPAIGN IN VICIdial ]  (Node → Firestore + PHP)
 // ───────────────────────────────────────────────────────────────────────────────
 app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
   const { botId, campaignId, agentId } = req.body;
@@ -327,7 +327,7 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────────
-//  [ PROXY BOT ASSIGNMENTS JOINED WITH REMOTE AGENTS ]
+//  [ PROXY BOT ASSIGNMENTS JOINED WITH REMOTE AGENTS ]  (unused by React, but here)
 // ───────────────────────────────────────────────────────────────────────────────
 app.get("/bot-assignments", async (req, res) => {
   try {
