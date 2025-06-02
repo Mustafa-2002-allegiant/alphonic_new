@@ -1,5 +1,5 @@
 // ───────────────────────────────────────────────────────────────────────────────
-//  index.js  (Fully revised and ready to copy/paste; no omissions)
+//  index.js  (Fully revised and ready to copy/paste; nothing omitted)
 // ───────────────────────────────────────────────────────────────────────────────
 
 require("dotenv").config();
@@ -10,16 +10,6 @@ const path    = require("path");
 const fetch   = require("node-fetch");
 
 const db = require("./firebaseConfig"); // Firestore instance from firebaseConfig.js
-
-// ───────────────────────────────────────────────────────────────────────────────
-//  STEP 1: Change this to wherever your PHP scripts actually live.
-//          In your environment, those PHP endpoints are only reachable via HTTPS.
-//          So we must use "https://138.201.82.40" instead of "http://…".
-//
-//  If your PHP host or protocol ever changes, update this one constant.
-// ───────────────────────────────────────────────────────────────────────────────
-const PHP_BASE = "https://138.201.82.40";
-// ───────────────────────────────────────────────────────────────────────────────
 
 // Load STT/TTS modules (mock or real)
 const { streamToVosk } =
@@ -42,7 +32,7 @@ const PORT = process.env.PORT || 8080;
 // Serve static audio files
 app.use("/audio", express.static(path.join(__dirname)));
 
-// Enable CORS
+// Enable CORS globally
 app.use(cors());
 
 // JSON parser for most routes (up to 10 MB)
@@ -57,7 +47,6 @@ app.use(
 // ───────────────────────────────────────────────────────────────────────────────
 //  Password hashing helpers
 // ───────────────────────────────────────────────────────────────────────────────
-
 const hashPassword = async (password) => {
   const salt = await bcrypt.genSalt(10);
   return bcrypt.hash(password, salt);
@@ -67,7 +56,7 @@ const comparePassword = async (password, hash) => {
 };
 
 // ───────────────────────────────────────────────────────────────────────────────
-//  [ BOT ROUTES ]  (Firestore‐backed)
+//  [ BOT ROUTES ]
 // ───────────────────────────────────────────────────────────────────────────────
 
 // Create or update a bot in Firestore
@@ -92,7 +81,8 @@ app.post("/bot", async (req, res) => {
 });
 
 // Fetch all active (non-archived) bots from Firestore
-app.get("/active-bots", async (req, res) => {
+app.get("/active-bots", cors(), async (req, res) => {
+  console.log("GET /active-bots called"); // Diagnostic: see this in server console
   try {
     const snapshot = await db
       .collection("bots")
@@ -100,8 +90,10 @@ app.get("/active-bots", async (req, res) => {
       .where("isArchived", "==", false)
       .get();
     const bots = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    console.log("Active bots data:", bots); // Diagnostic: log the array returned
     return res.json(bots);
   } catch (err) {
+    console.error("Error in /active-bots:", err);
     return res.status(500).json({ error: "Failed to fetch active bots", details: err.message });
   }
 });
@@ -143,7 +135,7 @@ app.post("/start-bot", async (req, res) => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────────
-//  [ VICIdial AGENTS MANAGEMENT ]  (Firestore and Proxy to VICIdial PHP)
+//  [ VICIdial AGENTS MANAGEMENT ]
 // ───────────────────────────────────────────────────────────────────────────────
 
 // Add a new VICIdial agent record in Firestore
@@ -173,7 +165,7 @@ app.post("/vcdial-agents", async (req, res) => {
   }
 });
 
-// Proxy endpoint: fetch agents from VICIdial’s PHP script (HTTPS)
+// Proxy endpoint: fetch agents from VICIdial’s PHP script (HTTPS only)
 app.get("/vcdial-agents", async (req, res) => {
   try {
     // Directly fetch over HTTPS from the public domain
@@ -221,14 +213,14 @@ app.delete("/vcdial-agents/:id", async (req, res) => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────────
-//  [ CAMPAIGNS + BOT ASSIGNMENT TO CAMPAIGN ]  (Proxy to PHP & Firestore logic)
+//  [ CAMPAIGNS + BOT ASSIGNMENT TO CAMPAIGN ]
 // ───────────────────────────────────────────────────────────────────────────────
 
 // Proxy endpoint: fetch campaigns from VICIdial’s PHP script
 app.get("/campaigns", async (req, res) => {
   try {
-    // Proxy to PHP_BASE/get_campaigns.php (over HTTPS)
-    const response = await fetch(`${PHP_BASE}/get_campaigns.php`);
+    // Ensure this file exists at http://138.201.82.40/get_campaigns.php
+    const response = await fetch("http://138.201.82.40/get_campaigns.php");
     if (!response.ok) {
       return res.status(500).json({ error: "Failed to fetch campaigns from PHP API" });
     }
@@ -280,7 +272,7 @@ app.post("/campaign-bot-assignments", async (req, res) => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────────
-//  [ ASSIGN BOT TO AGENT AND CAMPAIGN IN VICIdial ]  (Node → Firestore & PHP)
+//  [ ASSIGN BOT TO AGENT AND CAMPAIGN IN VICIdial ]
 // ───────────────────────────────────────────────────────────────────────────────
 app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
   const { botId, campaignId, agentId } = req.body;
@@ -300,9 +292,9 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
       createdAt: new Date().toISOString(),
     });
 
-    // 2) Assign agent to VICIdial campaign via PHP (over HTTPS)
+    // 2) Assign agent to VICIdial campaign via PHP
     const phpAgentRes = await fetch(
-      `${PHP_BASE}/assign_agent_to_campaign.php`,
+      "http://138.201.82.40/assign_agent_to_campaign.php",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -314,9 +306,9 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
       throw new Error(err.error || "Failed to assign agent in VICIdial");
     }
 
-    // 3) Record bot assignment in VICIdial’s MySQL via PHP (over HTTPS)
+    // 3) Record bot assignment in VICIdial’s MySQL via PHP
     const phpBotRes = await fetch(
-      `${PHP_BASE}/update_bot_assignments.php`,
+      "http://138.201.82.40/update_bot_assignments.php",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -338,14 +330,16 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────────
-//  [ PROXY BOT ASSIGNMENTS JOINED WITH REMOTE AGENTS ]  (optional)
+//  [ PROXY BOT ASSIGNMENTS JOINED WITH REMOTE AGENTS ]
 // ───────────────────────────────────────────────────────────────────────────────
 app.get("/bot-assignments", async (req, res) => {
   try {
     const qs = req.query.campaign_id
       ? `?campaign_id=${encodeURIComponent(req.query.campaign_id)}`
       : "";
-    const phpRes = await fetch(`${PHP_BASE}/get_bot_assignments.php${qs}`);
+    const phpRes = await fetch(
+      `http://138.201.82.40/get_bot_assignments.php${qs}`
+    );
     if (!phpRes.ok) {
       const text = await phpRes.text();
       console.error("PHP error:", text);
