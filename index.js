@@ -11,48 +11,41 @@ const fetch   = require("node-fetch");
 
 const db = require("./firebaseConfig"); // Firestore instance from firebaseConfig.js
 
-// ───────────────────────────────────────────────────────────────────────────────
-//  STEP 1: Change this to wherever your PHP scripts actually live.
-//          For example, if your PHP is at http://138.201.82.40/… or
-//          https://138.201.82.40/…, just set PHP_BASE accordingly.
-// ───────────────────────────────────────────────────────────────────────────────
-const PHP_BASE = "http://138.201.82.40";
-// If your PHP is accessible over HTTPS, you can do:
-// const PHP_BASE = "https://138.201.82.40";
-
-
-// Load STT/TTS modules (mock or real)
-const { streamToVosk } =
-  process.env.USE_MOCK_STT === "true"
-    ? require("./sttClient.mock")
-    : require("./sttClient");
-const { speakText } =
-  process.env.USE_MOCK_TTS === "true"
-    ? require("./TTSService.mock")
-    : require("./TTSService");
-const { recognizeLiveAudio } =
-  process.env.USE_MOCK_STT === "true"
-    ? require("./liveSTTHandler.mock")
-    : require("./liveSTTHandler");
-const classifyResponse = require("./classifyResponse");
-
 const app = express();
 const PORT = process.env.PORT || 8080;
 
 // ───────────────────────────────────────────────────────────────────────────────
-//  Static & Middleware
+//  STEP 1: Change this to wherever your PHP scripts live.
+//          For example, if your PHP endpoints are at:
+//            http://138.201.82.40/get_campaigns.php
+//            http://138.201.82.40/get_bots.php
+//            http://138.201.82.40/get_vicidial_agents.php
+//
+//          then use:
+//            const PHP_BASE = "http://138.201.82.40";
+//
+//          If your PHP is available via HTTPS, e.g.:
+//            https://138.201.82.40/get_campaigns.php
+//          then set:
+//            const PHP_BASE = "https://138.201.82.40";
+// ───────────────────────────────────────────────────────────────────────────────
+const PHP_BASE = "http://138.201.82.40";
 // ───────────────────────────────────────────────────────────────────────────────
 
-// Serve static audio files from the root (so `/audio/<file.wav>` works)
-app.use("/audio", express.static(path.join(__dirname)));
+// ───────────────────────────────────────────────────────────────────────────────
+//  Middleware Setup
+// ───────────────────────────────────────────────────────────────────────────────
 
-// Enable CORS for all routes
+// Enable CORS (so your React app can call these routes)
 app.use(cors());
 
-// JSON parser for all routes (up to 10 MB)
+// JSON parser (up to 10 MB) for most endpoints
 app.use(express.json({ limit: "10mb" }));
 
-// RAW parser for /start-bot (audio/wav payloads, up to 10 MB)
+// Serve static audio files under /audio (for TTS playback)
+app.use("/audio", express.static(path.join(__dirname)));
+
+// RAW WAV parser for /start-bot route (for STT)
 app.use(
   "/start-bot",
   express.raw({ type: "audio/wav", limit: "10mb" })
@@ -71,7 +64,7 @@ const comparePassword = async (password, hash) => {
 };
 
 // ───────────────────────────────────────────────────────────────────────────────
-//  [ BOT ROUTES ]  (Firestore–backed)
+//  [ BOT ROUTES ]  (Firestore‐backed for your WellnessSyncAI bots, etc.)
 // ───────────────────────────────────────────────────────────────────────────────
 
 // Create or update a bot in Firestore
@@ -95,7 +88,7 @@ app.post("/bot", async (req, res) => {
   }
 });
 
-// Fetch all active (non-archived) bots from Firestore
+// Fetch all active (non‐archived) bots from Firestore
 app.get("/active-bots", async (req, res) => {
   try {
     const snapshot = await db
@@ -110,7 +103,7 @@ app.get("/active-bots", async (req, res) => {
   }
 });
 
-// Test TTS: generate a voice file and return its filename
+// Test TTS: generate a voice file and return its filename under /audio
 app.post("/test-voice", async (req, res) => {
   const { text, voice } = req.body;
   if (!text) {
@@ -118,23 +111,23 @@ app.post("/test-voice", async (req, res) => {
   }
   try {
     const outputPath = await speakText(text, voice || "en-US-Wavenet-F");
-    // Return just the filename so client can fetch /audio/<filename>
+    // Return filename so client can fetch /audio/<filename>
     return res.json({ success: true, path: path.basename(outputPath) });
   } catch (err) {
     return res.status(500).json({ error: err.message || "TTS failed" });
   }
 });
 
-// RAW-WAV STT route: accept audio buffer, run speech-to-text, store in Firestore
+// RAW‐WAV STT route: accept audio buffer, run speech‐to‐text, store to Firestore
 app.post("/start-bot", async (req, res) => {
   try {
-    const audioBuffer = req.body; // entire WAV file buffer
+    const audioBuffer = req.body; // entire WAV buffer
     const lastBotMessage = req.query.lastLine || "Do you want to speak with a human?";
     recognizeLiveAudio(audioBuffer, lastBotMessage, async (err, result) => {
       if (err) {
         return res.status(500).json({ error: "STT failed" });
       }
-      // Save STT result to Firestore
+      // Save STT result in Firestore
       await db.collection("bot_sessions").add({
         ...result,
         timestamp: new Date().toISOString(),
@@ -147,10 +140,10 @@ app.post("/start-bot", async (req, res) => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────────
-//  [ VICIdial AGENTS MANAGEMENT ]  (Firestore & Proxy to PHP)
+//  [ VICIdial AGENTS MANAGEMENT ]  (Firestore for your local copies, plus proxy)
 // ───────────────────────────────────────────────────────────────────────────────
 
-// Add a new VICIdial agent record in Firestore
+// Add a new VICIdial agent record in Firestore (local mirror)
 app.post("/vcdial-agents", async (req, res) => {
   const { agentId, password } = req.body;
   if (!agentId || !password) {
@@ -177,12 +170,12 @@ app.post("/vcdial-agents", async (req, res) => {
   }
 });
 
-// Proxy endpoint: fetch agents from VICIdial’s PHP script (HTTPS only)
+// Proxy endpoint: fetch agents from VICIdial’s PHP script
 app.get("/vcdial-agents", async (req, res) => {
   try {
-    // We fetch from the public domain:
+    // We call the publicly hosted PHP:
     //   https://allegientlead.dialerhosting.com/get_vicidial_agents.php
-    // (PHP_BASE is NOT used here because this PHP is on a separate host.)
+    // (That is not under PHP_BASE, because it’s on a different domain.)
     const response = await fetch(
       "https://allegientlead.dialerhosting.com/get_vicidial_agents.php"
     );
@@ -190,7 +183,7 @@ app.get("/vcdial-agents", async (req, res) => {
       throw new Error(`HTTP ${response.status} from VICIdial PHP`);
     }
     const agentsData = await response.json();
-    // Expect agentsData = [ { "user_id":"1001", "agent_login":"agent1", "agent_name":"John Smith" }, … ]
+    // Expect agentsData = [ { user_id, agent_login, agent_name, … }, … ]
     return res.json(agentsData);
   } catch (err) {
     console.error("/vcdial-agents ERROR:", err.message);
@@ -201,7 +194,7 @@ app.get("/vcdial-agents", async (req, res) => {
   }
 });
 
-// Update a VICIdial agent record in Firestore
+// Update a VICIdial agent record in Firestore (local mirror)
 app.put("/vcdial-agents/:id", async (req, res) => {
   const { id } = req.params;
   const { agentId, password, companyName, agentLogin, isActive } = req.body;
@@ -217,7 +210,7 @@ app.put("/vcdial-agents/:id", async (req, res) => {
   }
 });
 
-// Delete a VICIdial agent record from Firestore
+// Delete a VICIdial agent record from Firestore (local mirror)
 app.delete("/vcdial-agents/:id", async (req, res) => {
   const { id } = req.params;
   try {
@@ -229,20 +222,19 @@ app.delete("/vcdial-agents/:id", async (req, res) => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────────
-//  [ CAMPAIGNS + BOT ASSIGNMENT TO CAMPAIGN ]  (Proxy → PHP & Firestore)
+//  [ CAMPAIGNS + BOT ASSIGNMENT TO CAMPAIGN ]  (Proxy → PHP & Firestore logic)
 // ───────────────────────────────────────────────────────────────────────────────
 
 // Proxy endpoint: fetch campaigns from VICIdial’s PHP script
 app.get("/campaigns", async (req, res) => {
   try {
-    // Proxy to PHP: GET http://138.201.82.40/get_campaigns.php
-    // (Make sure your PHP script is deployed there.)
+    // Proxy to PHP_BASE/get_campaigns.php
     const response = await fetch(`${PHP_BASE}/get_campaigns.php`);
     if (!response.ok) {
       return res.status(500).json({ error: "Failed to fetch campaigns from PHP API" });
     }
     const data = await response.json();
-    // Expect data = [ { "campaign_id":"001", "campaign_name":"Demo Campaign" }, … ]
+    // Expect data = [ { campaign_id, campaign_name }, … ]
     return res.json(data);
   } catch (err) {
     return res.status(500).json({ error: err.message });
@@ -287,7 +279,7 @@ app.post("/campaign-bot-assignments", async (req, res) => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────────
-//  [ ASSIGN BOT TO AGENT AND CAMPAIGN IN VICIdial ]  (Node → Firestore & PHP)
+//  [ ASSIGN BOT TO AGENT AND CAMPAIGN IN VICIdial ]  (Fires both Firestore & PHP)
 // ───────────────────────────────────────────────────────────────────────────────
 app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
   const { botId, campaignId, agentId } = req.body;
@@ -298,7 +290,7 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
   }
 
   try {
-    // 1) Record assignment in Firestore
+    // 1) Record assignment in Firestore (mirror)
     await db.collection("bot_assignments").add({
       botId,
       campaignId,
@@ -333,20 +325,21 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
     const bodyText = await phpBotRes.text();
     if (!phpBotRes.ok) {
       console.error("PHP bot assignment error:", bodyText);
-      throw new Error(`Failed to insert bot assignment: ${bodyText}`);
+      throw new Error(`Failed to insert bot assignment in MySQL: ${bodyText}`);
     }
     const botResult = JSON.parse(bodyText);
 
     // 4) Return success + PHP payload
     return res.json({ success: true, botResult });
   } catch (err) {
-    console.error("Error assigning bot and agent:", err);
+    console.error("Error in /assign-bot-to-agent-and-campaign:", err);
     return res.status(500).json({ error: err.message });
   }
 });
 
 // ───────────────────────────────────────────────────────────────────────────────
-//  [ PROXY BOT ASSIGNMENTS JOINED WITH REMOTE AGENTS ]  (optional)
+//  [ Optional: PROXY BOT ASSIGNMENTS JOINED WITH REMOTE AGENTS ]  
+//  (If you need to fetch existing assignments from PHP)
 // ───────────────────────────────────────────────────────────────────────────────
 app.get("/bot-assignments", async (req, res) => {
   try {
