@@ -1,5 +1,5 @@
 // ───────────────────────────────────────────────────────────────────────────────
-//  index.js  (Syntax‐errors removed; ready to copy/paste)
+//  index.js  (Syntax errors removed; ready to copy/paste)
 // ───────────────────────────────────────────────────────────────────────────────
 
 require("dotenv").config();
