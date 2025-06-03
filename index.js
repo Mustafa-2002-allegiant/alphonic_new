@@ -1,6 +1,7 @@
 // ───────────────────────────────────────────────────────────────────────────────
 //  index.js  (Full Node/Express backend; ready to copy/paste)
-//  Includes new logic to call update_bot.php whenever a bot is created/updated.
+//  Includes new logic to call update_bot.php whenever a bot is created/updated,
+//  and uses HTTPS for all PHP calls.
 // ───────────────────────────────────────────────────────────────────────────────
 
 require("dotenv").config();
@@ -80,7 +81,7 @@ app.post("/bot", async (req, res) => {
 
     // 2) Also call the PHP endpoint on VICIdial to insert/update in MySQL
     try {
-      const phpRes = await fetch("http://138.201.82.40/update_bot.php", {
+      const phpRes = await fetch("https://allegientlead.dialerhosting.com/update_bot.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ botId }),
@@ -89,7 +90,7 @@ app.post("/bot", async (req, res) => {
       const phpText = await phpRes.text().catch(() => "{}");
       if (!phpRes.ok) {
         console.error("PHP /update_bot.php returned error:", phpText);
-        // We do NOT fail the entire request—Firestore write already succeeded
+        // Do NOT fail the entire request—Firestore write already succeeded
       } else {
         console.log("PHP /update_bot.php response:", phpText);
       }
@@ -189,7 +190,7 @@ app.post("/vcdial-agents", async (req, res) => {
 // Proxy endpoint: fetch agents from VICIdial’s PHP script (HTTPS only)
 app.get("/vcdial-agents", async (req, res) => {
   try {
-    const response = await fetch("http://138.201.82.40/get_vicidial_agents.php");
+    const response = await fetch("https://allegientlead.dialerhosting.com/get_vicidial_agents.php");
     if (!response.ok) {
       throw new Error(`HTTP ${response.status} from VICIdial PHP`);
     }
@@ -236,10 +237,10 @@ app.delete("/vcdial-agents/:id", async (req, res) => {
 //  [ CAMPAIGNS + BOT ASSIGNMENT TO CAMPAIGN ]  (Node proxy + Firestore logic)
 // ───────────────────────────────────────────────────────────────────────────────
 
-// Proxy endpoint: fetch campaigns from VICIdial’s PHP script
+// Proxy endpoint: fetch campaigns from VICIdial’s PHP script (HTTPS only)
 app.get("/campaigns", async (req, res) => {
   try {
-    const response = await fetch("http://138.201.82.40/get_campaigns.php");
+    const response = await fetch("https://allegientlead.dialerhosting.com/get_campaigns.php");
     if (!response.ok) {
       return res.status(500).json({ error: "Failed to fetch campaigns from PHP API" });
     }
@@ -311,9 +312,9 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
       createdAt: new Date().toISOString(),
     });
 
-    // 2) Assign agent to VICIdial campaign via PHP
+    // 2) Assign agent to VICIdial campaign via PHP (HTTPS)
     const phpAgentRes = await fetch(
-      "http://138.201.82.40/assign_agent_to_campaign.php",
+      "https://allegientlead.dialerhosting.com/assign_agent_to_campaign.php",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -325,9 +326,9 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
       throw new Error(err.error || "Failed to assign agent in VICIdial");
     }
 
-    // 3) Record bot assignment in VICIdial’s MySQL via PHP
+    // 3) Record bot assignment in VICIdial’s MySQL via PHP (HTTPS)
     const phpBotRes = await fetch(
-      "http://138.201.82.40/update_bot_assignments.php",
+      "https://allegientlead.dialerhosting.com/update_bot_assignments.php",
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -357,7 +358,7 @@ app.get("/bot-assignments", async (req, res) => {
       ? `?campaign_id=${encodeURIComponent(req.query.campaign_id)}`
       : "";
     const phpRes = await fetch(
-      `http://138.201.82.40/get_bot_assignments.php${qs}`
+      `https://allegientlead.dialerhosting.com/get_bot_assignments.php${qs}`
     );
     if (!phpRes.ok) {
       const text = await phpRes.text();
