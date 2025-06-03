@@ -1,5 +1,6 @@
 // ───────────────────────────────────────────────────────────────────────────────
 //  index.js  (Full Node/Express backend; ready to copy/paste)
+//  Includes new logic to call update_bot.php whenever a bot is created/updated.
 // ───────────────────────────────────────────────────────────────────────────────
 
 require("dotenv").config();
@@ -56,16 +57,18 @@ const comparePassword = async (password, hash) => {
 };
 
 // ───────────────────────────────────────────────────────────────────────────────
-//  [ BOT ROUTES ]  (Firestore‐backed)
+//  [ BOT ROUTES ]  (Firestore‐backed + VICIdial MySQL sync)
 // ───────────────────────────────────────────────────────────────────────────────
 
-// Create or update a bot in Firestore
+// Create or update a bot in Firestore AND record it in VICIdial’s MySQL via PHP
 app.post("/bot", async (req, res) => {
   const { botId, script, voice } = req.body;
   if (!botId || !script || !Array.isArray(script)) {
     return res.status(400).json({ error: "botId and script (array) required" });
   }
+
   try {
+    // 1) Write to Firestore
     await db.collection("bots").doc(botId).set({
       script,
       sessionProgress: { currentLine: 0 },
@@ -74,6 +77,27 @@ app.post("/bot", async (req, res) => {
       createdAt: new Date().toISOString(),
       voice: voice || "en-US-Wavenet-F",
     });
+
+    // 2) Also call the PHP endpoint on VICIdial to insert/update in MySQL
+    try {
+      const phpRes = await fetch("http://138.201.82.40/update_bot.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ botId }),
+      });
+
+      const phpText = await phpRes.text().catch(() => "{}");
+      if (!phpRes.ok) {
+        console.error("PHP /update_bot.php returned error:", phpText);
+        // We do NOT fail the entire request—Firestore write already succeeded
+      } else {
+        console.log("PHP /update_bot.php response:", phpText);
+      }
+    } catch (phpErr) {
+      console.error("Failed to call update_bot.php:", phpErr.message);
+      // swallow PHP errors to avoid breaking the main /bot response
+    }
+
     return res.status(200).json({ success: true });
   } catch (err) {
     return res.status(500).json({ error: "Failed to save bot", details: err.message });
@@ -110,7 +134,7 @@ app.post("/test-voice", async (req, res) => {
   }
 });
 
-// RAW-WAV STT route: accept audio buffer, run speech-to-text, store in Firestore
+// RAW‐WAV STT route: accept audio buffer, run speech-to-text, store in Firestore
 app.post("/start-bot", async (req, res) => {
   try {
     const audioBuffer = req.body; // entire WAV file buffer
@@ -150,13 +174,13 @@ app.post("/vcdial-agents", async (req, res) => {
       return res.status(400).json({ error: "Agent already exists" });
     }
     const hashed = await hashPassword(password);
-    const doc = await db.collection("vcdial_agents").add({
+    const docRef = await db.collection("vcdial_agents").add({
       agentId,
       password: hashed,
       isActive: true,
       createdAt: new Date().toISOString(),
     });
-    return res.status(201).json({ success: true, agent: { id: doc.id, agentId } });
+    return res.status(201).json({ success: true, agent: { id: docRef.id, agentId } });
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
@@ -165,7 +189,6 @@ app.post("/vcdial-agents", async (req, res) => {
 // Proxy endpoint: fetch agents from VICIdial’s PHP script (HTTPS only)
 app.get("/vcdial-agents", async (req, res) => {
   try {
-    // Replace with your actual PHP URL for get_vicidial_agents.php:
     const response = await fetch("http://138.201.82.40/get_vicidial_agents.php");
     if (!response.ok) {
       throw new Error(`HTTP ${response.status} from VICIdial PHP`);
@@ -216,7 +239,6 @@ app.delete("/vcdial-agents/:id", async (req, res) => {
 // Proxy endpoint: fetch campaigns from VICIdial’s PHP script
 app.get("/campaigns", async (req, res) => {
   try {
-    // Replace with your actual PHP URL for get_campaigns.php:
     const response = await fetch("http://138.201.82.40/get_campaigns.php");
     if (!response.ok) {
       return res.status(500).json({ error: "Failed to fetch campaigns from PHP API" });
@@ -229,7 +251,7 @@ app.get("/campaigns", async (req, res) => {
   }
 });
 
-// Create or update a campaign-bot assignment in Firestore
+// Create or update a campaign‐bot assignment in Firestore
 app.post("/campaign-bot-assignments", async (req, res) => {
   const { campaignId, botId } = req.body;
   if (!campaignId || !botId) {
