@@ -105,18 +105,26 @@ app.post("/bot", async (req, res) => {
   }
 });
 
-// Fetch all active (non-archived) bots from Firestore
+// Fetch all active (non-archived) bots from VICIdial’s PHP script
 app.get("/active-bots", async (req, res) => {
   try {
-    const snapshot = await db
-      .collection("bots")
-      .where("isActive", "==", true)
-      .where("isArchived", "==", false)
-      .get();
-    const bots = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+    const response = await fetch("https://allegientlead.dialerhosting.com/get_bots.php");
+    if (!response.ok) {
+      return res.status(500).json({ error: "Failed to fetch bots from PHP API" });
+    }
+    const data = await response.json();
+    // Map PHP fields (bot_id, bot_name) to React-friendly shape (id, bot_name)
+    const bots = data.map((b) => ({
+      id: b.bot_id,
+      bot_name: b.bot_name,
+    }));
     return res.json(bots);
   } catch (err) {
-    return res.status(500).json({ error: "Failed to fetch active bots", details: err.message });
+    console.error("/active-bots ERROR:", err.message);
+    return res.status(500).json({
+      error: "Failed to fetch bots from VICIdial PHP",
+      details: err.message,
+    });
   }
 });
 
