@@ -18,10 +18,7 @@ const { streamToVosk } =
   process.env.USE_MOCK_STT === "true"
     ? require("./sttClient.mock")
     : require("./sttClient");
-const { speakText } =
-  process.env.USE_MOCK_TTS === "true"
-    ? require("./TTSService.mock")
-    : require("./TTSService");
+const { speakText } = require("./TTSService");
 const { recognizeLiveAudio } =
   process.env.USE_MOCK_STT === "true"
     ? require("./liveSTTHandler.mock")
