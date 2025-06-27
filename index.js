@@ -156,6 +156,24 @@ app.post("/start-bot", async (req, res) => {
   }
 });
 
+// Test entire bot script: generate TTS audio for each step and return filenames
+app.post("/test-bot-script", async (req, res) => {
+  const { script, voice } = req.body;
+  if (!script || !Array.isArray(script) || script.length === 0) {
+    return res.status(400).json({ error: "Script (array) is required" });
+  }
+  try {
+    const audioPaths = [];
+    for (const step of script) {
+      const outputPath = await speakText(step, voice || "en-US-Wavenet-F");
+      audioPaths.push(path.basename(outputPath));
+    }
+    return res.json({ success: true, audios: audioPaths });
+  } catch (err) {
+    return res.status(500).json({ error: err.message || "TTS failed" });
+  }
+});
+
 // ───────────────────────────────────────────────────────────────────────────────
 //  [ VICIdial AGENTS MANAGEMENT ]  (Firestore + Node proxy to PHP )
 // ───────────────────────────────────────────────────────────────────────────────
@@ -369,6 +387,94 @@ app.get("/bot-assignments", async (req, res) => {
     return res.json(data);
   } catch (err) {
     console.error("Proxy error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Start a new bot session: returns first question and TTS audio
+app.post("/start-bot-session", async (req, res) => {
+  const { botId } = req.body;
+  if (!botId) return res.status(400).json({ error: "botId required" });
+  try {
+    const botDoc = await db.collection("bots").doc(botId).get();
+    if (!botDoc.exists) return res.status(404).json({ error: "Bot not found" });
+    const bot = botDoc.data();
+    const script = bot.script || [];
+    if (!Array.isArray(script) || script.length === 0) return res.status(400).json({ error: "Bot script is empty" });
+    const voice = bot.voice || "en-US-Wavenet-F";
+    // Synthesize first question
+    const firstQuestion = script[0];
+    const audioPath = await speakText(firstQuestion, voice);
+    // Create session in Firestore
+    const sessionRef = await db.collection("bot_sessions").add({
+      botId,
+      currentStep: 0,
+      responses: [],
+      createdAt: new Date().toISOString(),
+      done: false
+    });
+    return res.json({
+      sessionId: sessionRef.id,
+      question: firstQuestion,
+      audioPath: path.basename(audioPath),
+      step: 0,
+      done: false
+    });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// Respond to a bot session: process user audio, advance script, return next question/audio
+app.post("/bot-session/:sessionId/respond", async (req, res) => {
+  const { sessionId } = req.params;
+  const userAudio = req.body; // Expect raw audio buffer (WAV)
+  if (!userAudio || !Buffer.isBuffer(userAudio)) {
+    return res.status(400).json({ error: "User audio (WAV buffer) required" });
+  }
+  try {
+    const sessionRef = db.collection("bot_sessions").doc(sessionId);
+    const sessionDoc = await sessionRef.get();
+    if (!sessionDoc.exists) return res.status(404).json({ error: "Session not found" });
+    const session = sessionDoc.data();
+    if (session.done) return res.json({ done: true, message: "Session already completed", allResponses: session.responses });
+    // Get bot script
+    const botDoc = await db.collection("bots").doc(session.botId).get();
+    if (!botDoc.exists) return res.status(404).json({ error: "Bot not found" });
+    const bot = botDoc.data();
+    const script = bot.script || [];
+    const voice = bot.voice || "en-US-Wavenet-F";
+    // Transcribe user audio
+    recognizeLiveAudio(userAudio, script[session.currentStep], async (err, sttResult) => {
+      if (err) return res.status(500).json({ error: "STT failed" });
+      const userText = sttResult.text || "";
+      // Optionally classify response
+      const classification = classifyResponse(userText);
+      // Save response
+      const responses = session.responses.concat([{ step: session.currentStep, userText, classification }]);
+      let nextStep = session.currentStep + 1;
+      let done = nextStep >= script.length;
+      let nextQuestion = done ? null : script[nextStep];
+      let nextAudioPath = null;
+      if (!done) {
+        nextAudioPath = await speakText(nextQuestion, voice);
+      }
+      // Update session
+      await sessionRef.update({
+        currentStep: nextStep,
+        responses,
+        done
+      });
+      return res.json({
+        step: nextStep,
+        done,
+        nextQuestion,
+        audioPath: nextAudioPath ? path.basename(nextAudioPath) : null,
+        classification,
+        allResponses: responses
+      });
+    });
+  } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 });
