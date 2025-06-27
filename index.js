@@ -128,7 +128,9 @@ app.post("/test-voice", async (req, res) => {
   }
   try {
     const outputPath = await speakText(text, voice || "en-US-Wavenet-F");
-    // Return just the filename so client can fetch /audio/<filename>
+    if (!outputPath) {
+      return res.status(500).json({ error: "TTS failed to generate audio file." });
+    }
     return res.json({ success: true, path: path.basename(outputPath) });
   } catch (err) {
     return res.status(500).json({ error: err.message || "TTS failed" });
@@ -166,6 +168,9 @@ app.post("/test-bot-script", async (req, res) => {
     const audioPaths = [];
     for (const step of script) {
       const outputPath = await speakText(step, voice || "en-US-Wavenet-F");
+      if (!outputPath) {
+        return res.status(500).json({ error: "TTS failed to generate audio file." });
+      }
       audioPaths.push(path.basename(outputPath));
     }
     return res.json({ success: true, audios: audioPaths });
