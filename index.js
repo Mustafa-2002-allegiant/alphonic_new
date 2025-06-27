@@ -124,11 +124,15 @@ app.post("/test-voice", async (req, res) => {
     return res.status(400).json({ error: "Text is required" });
   }
   try {
-    const outputPath = await speakText(text, voice || "en-US-Wavenet-F");
-    if (!outputPath) {
-      return res.status(500).json({ error: "TTS failed to generate audio file." });
+    const audioBuffer = await speakText(text, voice || "en-US-Wavenet-F");
+    if (!audioBuffer) {
+      return res.status(500).json({ error: "TTS failed to generate audio." });
     }
-    return res.json({ success: true, path: path.basename(outputPath) });
+    res.set({
+      "Content-Type": "audio/mpeg",
+      "Content-Disposition": "inline; filename=\"output.mp3\""
+    });
+    return res.send(audioBuffer);
   } catch (err) {
     return res.status(500).json({ error: err.message || "TTS failed" });
   }
