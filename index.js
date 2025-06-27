@@ -61,7 +61,7 @@ const comparePassword = async (password, hash) => {
 //  [ BOT ROUTES ]  (Firestore‐backed + VICIdial MySQL sync)
 // ───────────────────────────────────────────────────────────────────────────────
 
-// Create or update a bot in Firestore AND record it in VICIdial’s MySQL via PHP
+// Create or update a bot in Firestore AND record it in VICIdial's MySQL via PHP
 app.post("/bot", async (req, res) => {
   const { botId, script, voice } = req.body;
   if (!botId || !script || !Array.isArray(script)) {
@@ -105,26 +105,18 @@ app.post("/bot", async (req, res) => {
   }
 });
 
-// Fetch all active (non-archived) bots from VICIdial’s PHP script
+// Fetch all active (non-archived) bots from VICIdial's PHP script
 app.get("/active-bots", async (req, res) => {
   try {
-    const response = await fetch("https://allegientlead.dialerhosting.com/get_bots.php");
-    if (!response.ok) {
-      return res.status(500).json({ error: "Failed to fetch bots from PHP API" });
-    }
-    const data = await response.json();
-    // Map PHP fields (bot_id, bot_name) to React-friendly shape (id, bot_name)
-    const bots = data.map((b) => ({
-      id: b.bot_id,
-      bot_name: b.bot_name,
-    }));
+    const snapshot = await db
+      .collection("bots")
+      .where("isActive", "==", true)
+      .where("isArchived", "==", false)
+      .get();
+    const bots = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
     return res.json(bots);
   } catch (err) {
-    console.error("/active-bots ERROR:", err.message);
-    return res.status(500).json({
-      error: "Failed to fetch bots from VICIdial PHP",
-      details: err.message,
-    });
+    return res.status(500).json({ error: "Failed to fetch active bots", details: err.message });
   }
 });
 
@@ -143,7 +135,7 @@ app.post("/test-voice", async (req, res) => {
   }
 });
 
-// RAW‐WAV STT route: accept audio buffer, run speech-to-text, store in Firestore
+// RAW-WAV STT route: accept audio buffer, run speech-to-text, store in Firestore
 app.post("/start-bot", async (req, res) => {
   try {
     const audioBuffer = req.body; // entire WAV file buffer
@@ -195,7 +187,7 @@ app.post("/vcdial-agents", async (req, res) => {
   }
 });
 
-// Proxy endpoint: fetch agents from VICIdial’s PHP script (HTTPS only)
+// Proxy endpoint: fetch agents from VICIdial's PHP script (HTTPS only)
 app.get("/vcdial-agents", async (req, res) => {
   try {
     const response = await fetch("https://allegientlead.dialerhosting.com/get_vicidial_agents.php");
@@ -245,7 +237,7 @@ app.delete("/vcdial-agents/:id", async (req, res) => {
 //  [ CAMPAIGNS + BOT ASSIGNMENT TO CAMPAIGN ]  (Node proxy + Firestore logic)
 // ───────────────────────────────────────────────────────────────────────────────
 
-// Proxy endpoint: fetch campaigns from VICIdial’s PHP script (HTTPS only)
+// Proxy endpoint: fetch campaigns from VICIdial's PHP script (HTTPS only)
 app.get("/campaigns", async (req, res) => {
   try {
     const response = await fetch("https://allegientlead.dialerhosting.com/get_campaigns.php");
@@ -260,7 +252,7 @@ app.get("/campaigns", async (req, res) => {
   }
 });
 
-// Create or update a campaign‐bot assignment in Firestore
+// Create or update a campaign-bot assignment in Firestore
 app.post("/campaign-bot-assignments", async (req, res) => {
   const { campaignId, botId } = req.body;
   if (!campaignId || !botId) {
@@ -334,7 +326,7 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
       throw new Error(err.error || "Failed to assign agent in VICIdial");
     }
 
-    // 3) Record bot assignment in VICIdial’s MySQL via PHP (HTTPS)
+    // 3) Record bot assignment in VICIdial's MySQL via PHP (HTTPS)
     const phpBotRes = await fetch(
       "https://allegientlead.dialerhosting.com/update_bot_assignments.php",
       {
