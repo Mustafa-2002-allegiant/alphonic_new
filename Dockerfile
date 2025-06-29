@@ -15,4 +15,4 @@ COPY . .
 RUN npm install
 
 # Run your app
-CMD ["node", "index.js"]
+CMD node index.js
