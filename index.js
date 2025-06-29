@@ -374,15 +374,21 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
 // ───────────────────────────────────────────────────────────────────────────────
 app.get("/bot-assignments", async (req, res) => {
   try {
-    let query = db.collection("bot_assignments");
-    if (req.query.campaign_id) {
-      query = query.where("campaignId", "==", req.query.campaign_id);
+    const qs = req.query.campaign_id
+      ? `?campaign_id=${encodeURIComponent(req.query.campaign_id)}`
+      : "";
+    const phpRes = await fetch(
+      `https://allegientlead.dialerhosting.com/get_bot_assignments.php${qs}`
+    );
+    if (!phpRes.ok) {
+      const text = await phpRes.text();
+      console.error("PHP error:", text);
+      return res.status(500).json({ error: "Failed to fetch assignments" });
     }
-    query = query.where("isActive", "==", true);
-    const snapshot = await query.get();
-    const assignments = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    return res.json(assignments);
+    const data = await phpRes.json();
+    return res.json(data);
   } catch (err) {
+    console.error("Proxy error:", err);
     return res.status(500).json({ error: err.message });
   }
 });
