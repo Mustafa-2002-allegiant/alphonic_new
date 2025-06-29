@@ -3,6 +3,12 @@ const fs = require("fs");
 const util = require("util");
 const path = require("path");
 
+// Ensure the audio directory exists
+const audioDir = path.join(__dirname, "audio");
+if (!fs.existsSync(audioDir)) {
+  fs.mkdirSync(audioDir);
+}
+
 // ✅ Load service account
 const serviceAccount = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
   ? JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON)
@@ -25,7 +31,7 @@ async function speakText(text, voiceName = "en-US-Wavenet-D") {
 
   try {
     const [response] = await client.synthesizeSpeech(request);
-    const outputPath = path.join(__dirname, `audio/output_${Date.now()}.mp3`);
+    const outputPath = path.join(audioDir, `output_${Date.now()}.mp3`);
     const writeFile = util.promisify(fs.writeFile);
     await writeFile(outputPath, response.audioContent, "binary");
     return outputPath;
