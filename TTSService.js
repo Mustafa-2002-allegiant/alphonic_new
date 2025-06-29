@@ -8,7 +8,6 @@ const serviceAccount = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
   ? JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON)
   : require("./serviceAccountKey.json");
 
-
 const client = new textToSpeech.TextToSpeechClient({
   credentials: {
     client_email: serviceAccount.client_email,
@@ -26,8 +25,10 @@ async function speakText(text, voiceName = "en-US-Wavenet-D") {
 
   try {
     const [response] = await client.synthesizeSpeech(request);
-    // Return the audio buffer directly for immediate playback
-    return response.audioContent;
+    const outputPath = path.join(__dirname, `audio/output_${Date.now()}.mp3`);
+    const writeFile = util.promisify(fs.writeFile);
+    await writeFile(outputPath, response.audioContent, "binary");
+    return outputPath;
   } catch (err) {
     console.error("TTS error:", err);
     return null;
