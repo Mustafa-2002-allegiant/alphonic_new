@@ -28,6 +28,8 @@ const classifyResponse = require("./classifyResponse");
 
 const app = express();
 const PORT = process.env.PORT || 8080;
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+
 
 // 1) Serve static audio files if you have any
 app.use("/audio", express.static(path.join(__dirname, "audio")));
@@ -103,18 +105,20 @@ app.post("/bot", async (req, res) => {
   }
 });
 
-async function transferToCampaign002(customerPhone) {
+async function transferToLocalCloser({ session_id, agent_user, campaign_id = "002", server_ip = "138.201.82.40", closer_group = "Closers" }) {
   const postBody = qs.stringify({
     source: "api",
     user: "9999",
     pass: "i6yhtrhgfh",
-    function: "external_dial",
-    phone_number: customerPhone,
-    campaign_id: "002",
-    search_method: "CAMPAIGN",
-    preview: "N",
-    focus_agent: "",
-    format: "json"
+    function: "transfer_conference",
+    session_id,
+    server_ip,
+    campaign_id,
+    agent_user,
+    phone_code: "1",
+    closer_group,
+    preset_name: "LOCAL CLOSER",
+    format: "text"
   });
 
   try {
@@ -124,14 +128,33 @@ async function transferToCampaign002(customerPhone) {
       body: postBody
     });
 
-    const data = await response.json();
-    console.log("✅ Transfer API Response:", data);
-    return data;
+    const text = await response.text();
+    console.log("📞 Local Closer Transfer Response:", text);
+    return text;
   } catch (err) {
-    console.error("❌ VICIdial Transfer Error:", err.message);
-    return { success: false, error: err.message };
+    console.error("❌ Local Closer Transfer Error:", err.message);
+    return null;
   }
 }
+
+app.post("/test-local-transfer", async (req, res) => {
+  const { session_id, agent_user } = req.body;
+
+  if (!session_id || !agent_user) {
+    return res.status(400).json({ error: "session_id and agent_user are required" });
+  }
+
+  const result = await transferToLocalCloser({
+    session_id,
+    agent_user,
+    campaign_id: "002", // or "001" depending on where agents are
+    server_ip: "138.201.82.40",
+    closer_group: "Closers"
+  });
+
+  return res.json({ result });
+});
+
 // Fetch all active (non-archived) bots from VICIdial's PHP script
 app.get("/active-bots", async (req, res) => {
   try {
@@ -189,7 +212,23 @@ app.post("/start-bot", async (req, res) => {
         message = "Transferring you to a verification specialist...";
       
         const customerPhone = req.query.phone || "+11234567890"; // fallback default
-        await transferToCampaign002(customerPhone);
+        const agentUser = req.query.agent_user;
+const sessionId = req.query.session_id;
+
+if (!agentUser || !sessionId) {
+  console.error("❌ Missing agent_user or session_id");
+  return res.status(400).json({ error: "Missing agent_user or session_id" });
+}
+
+await transferToLocalCloser({
+  session_id: "8600055",
+  agent_user: "8024",
+  campaign_id: "002",
+  server_ip: "138.201.82.40",
+  closer_group: "Closers"
+});
+console.error("❌ Local Closer Transfer Error:", err.message); 
+
       }
       
        else if (intent === "no") {
@@ -541,6 +580,7 @@ app.post("/bot-session/:sessionId/respond", async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
+
 
 // ───────────────────────────────────────────────────────────────────────────────
 //  Start Server
