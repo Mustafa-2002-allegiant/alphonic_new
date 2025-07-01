@@ -10,6 +10,7 @@ const cors    = require("cors");
 const bcrypt  = require("bcryptjs");
 const path    = require("path");
 const fetch   = require("node-fetch");
+const qs = require("querystring");
 
 const db = require("./firebaseConfig"); // Firestore instance from firebaseConfig.js
 
@@ -102,6 +103,35 @@ app.post("/bot", async (req, res) => {
   }
 });
 
+async function transferToCampaign002(customerPhone) {
+  const postBody = qs.stringify({
+    source: "api",
+    user: "9999",
+    pass: "i6yhtrhgfh",
+    function: "external_dial",
+    phone_number: customerPhone,
+    campaign_id: "002",
+    search_method: "CAMPAIGN",
+    preview: "N",
+    focus_agent: "",
+    format: "json"
+  });
+
+  try {
+    const response = await fetch("https://138.201.82.40/agc/api.php", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: postBody
+    });
+
+    const data = await response.json();
+    console.log("✅ Transfer API Response:", data);
+    return data;
+  } catch (err) {
+    console.error("❌ VICIdial Transfer Error:", err.message);
+    return { success: false, error: err.message };
+  }
+}
 // Fetch all active (non-archived) bots from VICIdial's PHP script
 app.get("/active-bots", async (req, res) => {
   try {
@@ -136,8 +166,10 @@ app.post("/test-voice", async (req, res) => {
 
 // RAW-WAV STT route: accept audio buffer, run speech-to-text, store in Firestore
 app.post("/start-bot", async (req, res) => {
-  const audioBuffer = req.body;
+  const audioBuffer = req.file?.buffer || req.body.audio || Buffer.from([]);
   const lastBotMessage = req.query.lastLine || "Do you want to speak with a human?";
+  const customerPhone = req.query.phone || "+11234567890"; // fallback if not provided
+
 
   try {
     recognizeLiveAudio(audioBuffer, async (err, userText) => {
@@ -154,8 +186,13 @@ app.post("/start-bot", async (req, res) => {
 
       if (intent === "yes") {
         action = "transfer_to_agent";
-        message = "Transferring you to a live agent...";
-      } else if (intent === "no") {
+        message = "Transferring you to a verification specialist...";
+      
+        const customerPhone = req.query.phone || "+11234567890"; // fallback default
+        await transferToCampaign002(customerPhone);
+      }
+      
+       else if (intent === "no") {
         action = "end_call";
         message = "Okay, ending the call. Have a great day!";
       } else if (intent === "repeat") {
