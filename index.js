@@ -11,6 +11,7 @@ const bcrypt  = require("bcryptjs");
 const path    = require("path");
 const fetch   = require("node-fetch");
 const qs = require("querystring");
+const AsteriskManager = require("asterisk-manager");
 
 const db = require("./firebaseConfig"); // Firestore instance from firebaseConfig.js
 
@@ -56,6 +57,44 @@ const hashPassword = async (password) => {
 const comparePassword = async (password, hash) => {
   return bcrypt.compare(password, hash);
 };
+const ami = new AsteriskManager(
+  5038,                  // Port
+  "138.201.82.40",       // Host
+  "admin",               // Username
+  "1234",                // Password
+  true                   // Enable events
+);
+
+const originateTransferCall = async () => {
+  try {
+    await ami.connect();
+
+    const action = {
+      Action: 'Originate',
+      Channel: 'Local/999*Closers@default',
+      Context: 'default',
+      Exten: '1234',
+      Priority: 1,
+      CallerID: 'BotTransfer <1000>',
+      Timeout: 30000
+    };
+
+    ami.action(action, (err, res) => {
+      if (err) {
+        console.error("❌ AMI Transfer failed:", err);
+      } else {
+        console.log("✅ AMI transfer initiated:", res);
+      }
+    });
+
+  } catch (err) {
+    console.error("❌ AMI Transfer failed:", err);
+  }
+};
+
+
+
+
 
 // ───────────────────────────────────────────────────────────────────────────────
 //  [ BOT ROUTES ]  (Firestore‐backed + VICIdial MySQL sync)
@@ -137,6 +176,14 @@ async function transferToLocalCloser({ session_id, agent_user, campaign_id = "00
   }
 }
 
+app.post("/test-transfer", async (req, res) => {
+  try {
+    await originateTransferCall();
+    return res.json({ success: true });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
 app.post("/test-local-transfer", async (req, res) => {
   const { session_id, agent_user } = req.body;
 
@@ -208,27 +255,8 @@ app.post("/start-bot", async (req, res) => {
       let message = "Sorry, I didn't understand that.";
 
       if (intent === "yes") {
-        action = "transfer_to_agent";
-        message = "Transferring you to a verification specialist...";
-      
-        const customerPhone = req.query.phone || "+11234567890"; // fallback default
-        const agentUser = req.query.agent_user;
-const sessionId = req.query.session_id;
-
-if (!agentUser || !sessionId) {
-  console.error("❌ Missing agent_user or session_id");
-  return res.status(400).json({ error: "Missing agent_user or session_id" });
-}
-
-await transferToLocalCloser({
-  session_id: "8600055",
-  agent_user: "8024",
-  campaign_id: "002",
-  server_ip: "138.201.82.40",
-  closer_group: "Closers"
-});
-console.error("❌ Local Closer Transfer Error:", err.message); 
-
+        console.log("🟢 Detected YES intent. Initiating transfer to Campaign 002 agent...");
+        await originateTransferCall(); // Use AMI to originate transfer
       }
       
        else if (intent === "no") {

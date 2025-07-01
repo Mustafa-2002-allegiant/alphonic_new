@@ -12,6 +12,7 @@
   "description": "Voicebot backend with Firebase, Asterisk, and VICIdial integration",
   "dependencies": {
     "@google-cloud/text-to-speech": "^6.1.0",
+    "asterisk-manager": "^0.2.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
