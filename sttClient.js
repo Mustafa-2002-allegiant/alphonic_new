@@ -1,11 +1,11 @@
 const WebSocket = require("ws");
-const fs = require("fs");
+const { Readable } = require("stream");
 
-function streamToVosk(audioPath, callback) {
+function streamToVosk(audioBuffer, callback) {
   const ws = new WebSocket("ws://127.0.0.1:2700");
 
   ws.on("open", () => {
-    const stream = fs.createReadStream(audioPath);
+    const stream = Readable.from(audioBuffer);
     stream.on("data", (chunk) => {
       ws.send(chunk);
     });
@@ -18,7 +18,7 @@ function streamToVosk(audioPath, callback) {
   let responded = false;
 
   ws.on("message", (msg) => {
-    if (responded) return; // ❗ prevent double res.json
+    if (responded) return;
 
     try {
       const data = JSON.parse(msg);
