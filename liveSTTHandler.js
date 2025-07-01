@@ -3,7 +3,7 @@ const fs = require("fs");
 const { Readable } = require("stream");
 const path = require("path");
 
-const MODEL_PATH = path.resolve(__dirname, "model"); // Absolute path recommended
+const MODEL_PATH = path.resolve(__dirname, "model/vosk-model-small-en-us-0.15");
 const SAMPLE_RATE = 16000;
 
 if (!fs.existsSync(MODEL_PATH)) {

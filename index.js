@@ -29,7 +29,7 @@ const app = express();
 const PORT = process.env.PORT || 8080;
 
 // 1) Serve static audio files if you have any
-app.use("/audio", express.static(path.join(__dirname)));
+app.use("/audio", express.static(path.join(__dirname, "audio")));
 
 // 2) Enable CORS (so React on localhost:5173 can talk to these endpoints)
 app.use(cors());
@@ -136,24 +136,48 @@ app.post("/test-voice", async (req, res) => {
 
 // RAW-WAV STT route: accept audio buffer, run speech-to-text, store in Firestore
 app.post("/start-bot", async (req, res) => {
+  const audioBuffer = req.body;
+  const lastBotMessage = req.query.lastLine || "Do you want to speak with a human?";
+
   try {
-    const audioBuffer = req.body; // entire WAV file buffer
-    const lastBotMessage = req.query.lastLine || "Do you want to speak with a human?";
-    recognizeLiveAudio(audioBuffer, lastBotMessage, async (err, result) => {
+    recognizeLiveAudio(audioBuffer, async (err, userText) => {
       if (err) {
-        return res.status(500).json({ error: "STT failed" });
+        console.error("❌ STT error:", err);
+        return res.status(500).json({ error: "STT failed", details: err.message });
       }
-      // Save STT result to Firestore
+
+      console.log("👂 User said:", userText);
+      const intent = classifyResponse(userText);
+
+      let action = "unrecognized";
+      let message = "Sorry, I didn't understand that.";
+
+      if (intent === "yes") {
+        action = "transfer_to_agent";
+        message = "Transferring you to a live agent...";
+      } else if (intent === "no") {
+        action = "end_call";
+        message = "Okay, ending the call. Have a great day!";
+      } else if (intent === "repeat") {
+        action = "repeat";
+        message = lastBotMessage;
+      }
+
+      const result = { userText, intent, action, message };
+
       await db.collection("bot_sessions").add({
         ...result,
         timestamp: new Date().toISOString(),
       });
+
       return res.json(result);
     });
   } catch (err) {
+    console.error("❌ Fatal error:", err);
     return res.status(500).json({ error: "Failed to process audio", details: err.message });
   }
 });
+
 
 // Test entire bot script: generate TTS audio for each step and return filenames
 app.post("/test-bot-script", async (req, res) => {

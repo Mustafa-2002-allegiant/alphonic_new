@@ -31,8 +31,13 @@ async function speakText(text, voiceName = "en-US-Wavenet-D") {
 
   try {
     const [response] = await client.synthesizeSpeech(request);
-    // Return the audio buffer directly for immediate playback
-    return response.audioContent;
+    // Generate a unique filename
+    const fileName = `audio_${Date.now()}_${Math.floor(Math.random() * 10000)}.mp3`;
+    const filePath = path.join(audioDir, fileName);
+    // Write the audio buffer to a file
+    await util.promisify(fs.writeFile)(filePath, response.audioContent, "binary");
+    // Return the file path as a string
+    return filePath;
   } catch (err) {
     console.error("TTS error:", err);
     return null;
