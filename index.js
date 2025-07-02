@@ -146,7 +146,7 @@ app.post("/bot", async (req, res) => {
   }
 });
 
-async function transferToLocalCloser({ session_id, agent_user, campaign_id = "002", server_ip = "138.201.82.40", closer_group = "Closers" }) {
+async function transferToLocalCloser({ session_id, agent_user, campaign_id = "002", server_ip = "138.201.82.40", closer_group = "Agents" }) {
   const postBody = qs.stringify({
     source: "api",
     user: "9999",
