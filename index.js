@@ -193,13 +193,37 @@ app.post("/test-local-transfer", async (req, res) => {
     return res.status(400).json({ error: "session_id and agent_user are required" });
   }
 
-  const result = await transferToLocalCloser({
+  const transferToLocalCloser = ({
     session_id,
     agent_user,
-    campaign_id: "002", // or "001" depending on where agents are
-    server_ip: "138.201.82.40",
-    closer_group: "Closers"
-  });
+    campaign_id,
+    server_ip,
+    closer_group
+  }) => {
+    return new Promise(async (resolve, reject) => {
+      const formattedAgentUser = `text|${agent_user}`;
+  
+      const query = qs.stringify({
+        session_id,
+        agent_user: formattedAgentUser,
+        campaign_id,
+        server_ip,
+        function: "transfer_conference",
+        value: "TRANSFER"
+      });
+  
+      const res = await fetch(
+        `http://${server_ip}/agc/api.php?${query}`
+      );
+  
+      const data = await res.text();
+      if (data.includes("ERROR")) {
+        return resolve({ success: false, message: data });
+      }
+      resolve({ success: true, message: data });
+    });
+  };
+  
 
   return res.json({ result });
 });
