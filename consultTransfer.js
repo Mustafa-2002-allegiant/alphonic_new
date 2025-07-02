@@ -1,12 +1,11 @@
-// consultTransfer.js
 const AmiClient = require("asterisk-ami-client");
-
 const ami = new AmiClient();
 
-/**
- * Initiates consultative transfer between Closer (002) and the current customer
- * @param {string} customerNumber - phone number of the current customer
- */
+ami.on("connect", () => console.log("✅ AMI connected"));
+ami.on("event", (event) => console.log("📡 AMI EVENT:", event.Event));
+ami.on("disconnect", () => console.log("⚠️ AMI disconnected"));
+ami.on("error", (err) => console.error("❌ AMI ERROR:", err.message));
+
 const originateConsultTransfer = async (customerNumber) => {
   try {
     await ami.connect("admin", "1234", {
@@ -14,9 +13,7 @@ const originateConsultTransfer = async (customerNumber) => {
       port: 5038,
     });
 
-    console.log("✅ Connected to AMI");
-
-    // Step 1: Dial Closer Group (Campaign 002)
+    // STEP 1: Call a Closer from Campaign 002
     const closerDial = {
       Action: "Originate",
       Channel: "Local/999*Closers@default",
@@ -28,9 +25,9 @@ const originateConsultTransfer = async (customerNumber) => {
     };
 
     const res1 = await ami.action(closerDial);
-    console.log("📞 Step 1: Dialing Closer Group", res1);
+    console.log("✅ Step 1: Closer call initiated", res1);
 
-    // Step 2: Wait 3s, then call customer
+    // STEP 2: After delay, dial customer
     setTimeout(async () => {
       const customerDial = {
         Action: "Originate",
@@ -43,10 +40,10 @@ const originateConsultTransfer = async (customerNumber) => {
       };
 
       const res2 = await ami.action(customerDial);
-      console.log("📞 Step 2: Dialing Customer", res2);
+      console.log("✅ Step 2: Customer call initiated", res2);
     }, 3000);
   } catch (err) {
-    console.error("❌ Consultative Transfer Error:", err);
+    console.error("❌ Consultative Transfer Error:", err.message);
   }
 };
 

@@ -255,19 +255,19 @@ app.post("/start-bot", async (req, res) => {
 
       let action = "unrecognized";
       let message = "Sorry, I didn't understand that.";
-
-      if (classified.intent === "yes" && session.phoneNumber) {
-        await originateConsultTransfer(session.phoneNumber);
-      }
       
-      
-       else if (intent === "no") {
+      if (intent === "yes" && customerPhone) {
+        await originateConsultTransfer(customerPhone);
+        action = "transfer_to_agent";
+        message = "Okay, transferring you to a live agent...";
+      } else if (intent === "no") {
         action = "end_call";
         message = "Okay, ending the call. Have a great day!";
       } else if (intent === "repeat") {
         action = "repeat";
         message = lastBotMessage;
       }
+      
 
       const result = { userText, intent, action, message };
 
