@@ -192,30 +192,14 @@ app.post("/test-local-transfer", async (req, res) => {
   if (!session_id || !agent_user) {
     return res.status(400).json({ error: "session_id and agent_user are required" });
   }
-  const raw_agent_user = req.body.agent_user;
 
-const formatted_agent_user = raw_agent_user.startsWith("text|")
-  ? raw_agent_user
-  : `text|${raw_agent_user}`;
-
-const result = await transferToLocalCloser({
-  session_id,
-  agent_user: formatted_agent_user,
-  campaign_id: "002",
-  server_ip: "138.201.82.40",
-  closer_group: "Closers"
-});
-  // const formattedAgentUser = agent_user.startsWith("text|")
-  // ? agent_user
-  // : `text|${agent_user}`;
-
-  // const result = await transferToLocalCloser({
-  //   session_id,
-  //   agent_user: formattedAgentUser,
-  //   campaign_id: "002", // or "001" depending on where agents are
-  //   server_ip: "138.201.82.40",
-  //   closer_group: "Closers"
-  // });
+  const result = await transferToLocalCloser({
+    session_id,
+    agent_user,
+    campaign_id: "002", // or "001" depending on where agents are
+    server_ip: "138.201.82.40",
+    closer_group: "Closers"
+  });
 
   return res.json({ result });
 });
