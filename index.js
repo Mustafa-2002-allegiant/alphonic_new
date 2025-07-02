@@ -12,6 +12,8 @@ const path    = require("path");
 const fetch   = require("node-fetch");
 const qs = require("querystring");
 const AsteriskManager = require("asterisk-manager");
+const originateConsultTransfer = require("./consultTransfer");
+
 
 const db = require("./firebaseConfig"); // Firestore instance from firebaseConfig.js
 
@@ -254,10 +256,10 @@ app.post("/start-bot", async (req, res) => {
       let action = "unrecognized";
       let message = "Sorry, I didn't understand that.";
 
-      if (intent === "yes") {
-        console.log("🟢 Detected YES intent. Initiating transfer to Campaign 002 agent...");
-        await originateTransferCall(); // Use AMI to originate transfer
+      if (classified.intent === "yes" && session.phoneNumber) {
+        await originateConsultTransfer(session.phoneNumber);
       }
+      
       
        else if (intent === "no") {
         action = "end_call";
