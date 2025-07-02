@@ -195,7 +195,7 @@ app.post("/test-local-transfer", async (req, res) => {
 
   const result = await transferToLocalCloser({
     session_id,
-    agent_user,
+    agent_user: `text|${agent_user}`,
     campaign_id: "002", // or "001" depending on where agents are
     server_ip: "138.201.82.40",
     closer_group: "Closers"
