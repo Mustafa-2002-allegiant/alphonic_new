@@ -155,13 +155,13 @@ async function transferToLocalCloser({ session_id, agent_user, campaign_id = "00
     session_id,
     server_ip,
     campaign_id,
-    agent_user,
+    agent_user: agent_user.toString(),  // Make sure it's a plain string like "8024"
     phone_code: "1",
-    closer_group,
+    closer_group,  // Must match the VICIdial group where agents are assigned
     preset_name: "LOCAL CLOSER",
     format: "text"
   });
-
+  
   try {
     const response = await fetch("https://138.201.82.40/agc/api.php", {
       method: "POST",
@@ -193,37 +193,13 @@ app.post("/test-local-transfer", async (req, res) => {
     return res.status(400).json({ error: "session_id and agent_user are required" });
   }
 
-  const transferToLocalCloser = ({
+  const result = await transferToLocalCloser({
     session_id,
     agent_user,
-    campaign_id,
-    server_ip,
-    closer_group
-  }) => {
-    return new Promise(async (resolve, reject) => {
-      const formattedAgentUser = `text|${agent_user}`;
-  
-      const query = qs.stringify({
-        session_id,
-        agent_user: formattedAgentUser,
-        campaign_id,
-        server_ip,
-        function: "transfer_conference",
-        value: "TRANSFER"
-      });
-  
-      const res = await fetch(
-        `http://${server_ip}/agc/api.php?${query}`
-      );
-  
-      const data = await res.text();
-      if (data.includes("ERROR")) {
-        return resolve({ success: false, message: data });
-      }
-      resolve({ success: true, message: data });
-    });
-  };
-  
+    campaign_id: "002", // or "001" depending on where agents are
+    server_ip: "138.201.82.40",
+    closer_group: "Closers"
+  });
 
   return res.json({ result });
 });
