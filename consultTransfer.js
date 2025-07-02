@@ -9,9 +9,9 @@ ami.on("error", (err) => console.error("❌ AMI ERROR:", err.message));
 const originateConsultTransfer = async () => {
     const action = {
       Action: 'Originate',
-      Channel: 'Local/999*Closers@default',
+      Channel: 'Local/933*002*CL_AGENT@default',  // Format: 933*<CAMPAIGN>*CL_AGENT
       Context: 'default',
-      Exten: '1234',
+      Exten: '8365',       // VICIdial internal exten for "meetme"
       Priority: 1,
       CallerID: 'BotTransfer <1000>',
       Timeout: 30000
