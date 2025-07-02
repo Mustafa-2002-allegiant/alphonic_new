@@ -285,6 +285,47 @@ app.post("/start-bot", async (req, res) => {
   }
 });
 
+//get testing removed later:
+
+app.get("/start-bot", async (req, res) => {
+  const { debugIntent, channel } = req.query;
+
+  if (!debugIntent || !channel) {
+    return res.status(400).json({ error: "Missing debugIntent or channel" });
+  }
+
+  const message =
+    debugIntent === "yes"
+      ? "Okay, transferring you to a live agent..."
+      : debugIntent === "no"
+      ? "Okay, ending the call."
+      : "Sorry, I didn’t catch that.";
+
+  let action = "unrecognized";
+  if (debugIntent === "yes") {
+    const transferToCloser = require("./transferToCloser");
+    await transferToCloser(channel);
+    action = "transfer_to_agent";
+  } else if (debugIntent === "no") {
+    action = "end_call";
+  }
+
+  await db.collection("bot_sessions").add({
+    userText: debugIntent,
+    intent: debugIntent,
+    action,
+    message,
+    timestamp: new Date().toISOString(),
+  });
+
+  return res.json({
+    userText: debugIntent,
+    intent: debugIntent,
+    action,
+    message,
+  });
+});
+
 
 // Test entire bot script: generate TTS audio for each step and return filenames
 app.post("/test-bot-script", async (req, res) => {
