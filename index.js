@@ -254,11 +254,14 @@ app.post("/start-bot", async (req, res) => {
       let action = "unrecognized";
       let message = "Sorry, I didn't understand that.";
       
-      if (intent === "yes" && customerPhone) {
-        await originateConsultTransfer(customerPhone);
+      if (intent === "yes") {
+        // Dynamically get the current bot channel from the request (you must pass it from React)
+        const liveChannel = req.query.channel || "SIP/8024"; // TODO: Pass actual channel from frontend or AMI event
+        await originateConsultTransfer(liveChannel);
         action = "transfer_to_agent";
         message = "Okay, transferring you to a live agent...";
-      } else if (intent === "no") {
+      }
+       else if (intent === "no") {
         action = "end_call";
         message = "Okay, ending the call. Have a great day!";
       } else if (intent === "repeat") {
