@@ -146,22 +146,19 @@ app.post("/bot", async (req, res) => {
   }
 });
 
-async function transferToLocalCloser({ session_id, agent_user, campaign_id = "002", server_ip = "138.201.82.40", closer_group = "Agents" }) {
+async function dialWithCustomer({ session_id, agent_user, dial_channel, server_ip = "138.201.82.40" }) {
   const postBody = qs.stringify({
     source: "api",
     user: "9999",
     pass: "i6yhtrhgfh",
-    function: "transfer_conference",
+    function: "dial_with_customer",
     session_id,
     server_ip,
-    campaign_id,
-    agent_user: agent_user.toString(),  // Make sure it's a plain string like "8024"
-    phone_code: "1",
-    closer_group,  // Must match the VICIdial group where agents are assigned
-    preset_name: "LOCAL CLOSER",
+    agent_user,
+    value: dial_channel, 
     format: "text"
   });
-  
+
   try {
     const response = await fetch("https://138.201.82.40/agc/api.php", {
       method: "POST",
@@ -170,13 +167,14 @@ async function transferToLocalCloser({ session_id, agent_user, campaign_id = "00
     });
 
     const text = await response.text();
-    console.log("📞 Local Closer Transfer Response:", text);
+    console.log("📞 Dial With Customer Response:", text);
     return text;
   } catch (err) {
-    console.error("❌ Local Closer Transfer Error:", err.message);
+    console.error("❌ Dial With Customer Error:", err.message);
     return null;
   }
 }
+
 
 app.post("/test-transfer", async (req, res) => {
   try {
@@ -186,23 +184,23 @@ app.post("/test-transfer", async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-app.post("/test-local-transfer", async (req, res) => {
-  const { session_id, agent_user } = req.body;
+app.post("/test-consult-transfer", async (req, res) => {
+  const { session_id, agent_user, dial_channel } = req.body;
 
-  if (!session_id || !agent_user) {
-    return res.status(400).json({ error: "session_id and agent_user are required" });
+  if (!session_id || !agent_user || !dial_channel) {
+    return res.status(400).json({ error: "session_id, agent_user and dial_channel are required" });
   }
 
-  const result = await transferToLocalCloser({
+  const result = await dialWithCustomer({
     session_id,
     agent_user,
-    campaign_id: "002", // or "001" depending on where agents are
-    server_ip: "138.201.82.40",
-    closer_group: "Agents"
+    dial_channel, // example: "IAX2/127.0.0.1:405"
+    server_ip: "138.201.82.40"
   });
 
   return res.json({ result });
 });
+
 
 // Fetch all active (non-archived) bots from VICIdial's PHP script
 app.get("/active-bots", async (req, res) => {
