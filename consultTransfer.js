@@ -6,7 +6,7 @@ ami.on("event", (event) => console.log("📡 AMI EVENT:", event.Event));
 ami.on("disconnect", () => console.log("⚠️ AMI disconnected"));
 ami.on("error", (err) => console.error("❌ AMI ERROR:", err.message));
 
-const originateTransferCall = async () => {
+const originateConsultTransfer = async () => {
     const action = {
       Action: 'Originate',
       Channel: 'Local/999*Closers@default',
