@@ -235,6 +235,12 @@ app.post("/test-voice", async (req, res) => {
   }
 });
 
+// Add this helper function near the top (after imports)
+function generateSessionId() {
+  // Generates a random 7-digit string, e.g., "1234567"
+  return Math.floor(1000000 + Math.random() * 9000000).toString();
+}
+
 // RAW-WAV STT route: accept audio buffer, run speech-to-text, store in Firestore
 app.post("/start-bot", async (req, res) => {
   const audioBuffer = req.file?.buffer || req.body.audio || Buffer.from([]);
@@ -272,11 +278,18 @@ app.post("/start-bot", async (req, res) => {
 
       const result = { userText, intent, action, message };
 
-      await db.collection("bot_sessions").add({
+      // Generate a unique 7-digit session ID
+      let sessionId, sessionExists = true;
+      while (sessionExists) {
+        sessionId = generateSessionId();
+        const existing = await db.collection("bot_sessions").doc(sessionId).get();
+        sessionExists = existing.exists;
+      }
+      await db.collection("bot_sessions").doc(sessionId).set({
         ...result,
         timestamp: new Date().toISOString(),
       });
-
+      result.sessionId = sessionId; // Optionally return the sessionId in the response
       return res.json(result);
     });
   } catch (err) {
@@ -299,7 +312,7 @@ app.get("/start-bot", async (req, res) => {
       ? "Okay, transferring you to a live agent..."
       : debugIntent === "no"
       ? "Okay, ending the call."
-      : "Sorry, I didn’t catch that.";
+      : "Sorry, I didn't catch that.";
 
   let action = "unrecognized";
   if (debugIntent === "yes") {
@@ -310,19 +323,26 @@ app.get("/start-bot", async (req, res) => {
     action = "end_call";
   }
 
-  await db.collection("bot_sessions").add({
+  // Generate a unique 7-digit session ID
+  let sessionId, sessionExists = true;
+  while (sessionExists) {
+    sessionId = generateSessionId();
+    const existing = await db.collection("bot_sessions").doc(sessionId).get();
+    sessionExists = existing.exists;
+  }
+  await db.collection("bot_sessions").doc(sessionId).set({
     userText: debugIntent,
     intent: debugIntent,
     action,
     message,
     timestamp: new Date().toISOString(),
   });
-
   return res.json({
     userText: debugIntent,
     intent: debugIntent,
     action,
     message,
+    sessionId
   });
 });
 
@@ -579,8 +599,15 @@ app.post("/start-bot-session", async (req, res) => {
     // Synthesize first question
     const firstQuestion = script[0];
     const audioPath = await speakText(firstQuestion, voice);
-    // Create session in Firestore
-    const sessionRef = await db.collection("bot_sessions").add({
+    // Generate a unique 7-digit session ID
+    let sessionId, sessionExists = true;
+    while (sessionExists) {
+      sessionId = generateSessionId();
+      const existing = await db.collection("bot_sessions").doc(sessionId).get();
+      sessionExists = existing.exists;
+    }
+    // Create session in Firestore with the 7-digit sessionId as the doc ID
+    await db.collection("bot_sessions").doc(sessionId).set({
       botId,
       currentStep: 0,
       responses: [],
@@ -588,7 +615,7 @@ app.post("/start-bot-session", async (req, res) => {
       done: false
     });
     return res.json({
-      sessionId: sessionRef.id,
+      sessionId,
       question: firstQuestion,
       audioPath: path.basename(audioPath),
       step: 0,
