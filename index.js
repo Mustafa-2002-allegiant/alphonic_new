@@ -235,12 +235,6 @@ app.post("/test-voice", async (req, res) => {
   }
 });
 
-// Add this helper function near the top (after imports)
-function generateSessionId() {
-  // Generates a random 7-digit string, e.g., "1234567"
-  return Math.floor(1000000 + Math.random() * 9000000).toString();
-}
-
 // RAW-WAV STT route: accept audio buffer, run speech-to-text, store in Firestore
 app.post("/start-bot", async (req, res) => {
   const audioBuffer = req.file?.buffer || req.body.audio || Buffer.from([]);
@@ -599,23 +593,21 @@ app.post("/start-bot-session", async (req, res) => {
     // Synthesize first question
     const firstQuestion = script[0];
     const audioPath = await speakText(firstQuestion, voice);
-    // Generate a unique 7-digit session ID
-    let sessionId, sessionExists = true;
-    while (sessionExists) {
-      sessionId = generateSessionId();
-      const existing = await db.collection("bot_sessions").doc(sessionId).get();
-      sessionExists = existing.exists;
-    }
-    // Create session in Firestore with the 7-digit sessionId as the doc ID
-    await db.collection("bot_sessions").doc(sessionId).set({
+    // Originate call or remote agent via AMI/API (replace with your actual call origination logic)
+    const vicidialResponse = await originateCallToBotOrRemoteAgent(botId); // This should return the VICIdial session ID
+    const vicidialSessionId = vicidialResponse.confexten || vicidialResponse.SESSIONID;
+    // Create session in Firestore with VICIdial session ID
+    const sessionRef = await db.collection("bot_sessions").add({
       botId,
       currentStep: 0,
       responses: [],
       createdAt: new Date().toISOString(),
-      done: false
+      done: false,
+      vicidialSessionId // Store the VICIdial session ID
     });
     return res.json({
-      sessionId,
+      sessionId: sessionRef.id, // Firestore doc ID for your tracking
+      vicidialSessionId, // VICIdial session ID for call control
       question: firstQuestion,
       audioPath: path.basename(audioPath),
       step: 0,

@@ -86,16 +86,31 @@ const originateCallToBot = async (botId, campaignId) => {
 
     const action = {
       Action: 'Originate',
-      Channel: `SIP/${botId}`, // Bot's extension
+      Channel: `SIP/${botId}`,
       Context: 'default',
-      Exten: '1234', // Phone number to dial
+      Exten: '1234',
       Priority: 1,
       CallerID: 'Bot',
       Timeout: 30000
     };
 
     const response = await ami.sendAction(action);
-    console.log(`Outbound call initiated to bot ${botId}: ${response}`);
+    // Attempt to extract VICIdial session ID (confexten or similar) from response
+    const vicidialSessionId = response.confexten || response.SESSIONID || response.session_id || null;
+    if (vicidialSessionId) {
+      // Store the VICIdial session ID in Firestore with the bot assignment/session
+      await db.collection("bot_sessions").add({
+        botId,
+        campaignId,
+        vicidialSessionId,
+        createdAt: new Date().toISOString(),
+        status: 'initiated'
+      });
+      console.log(`Stored VICIdial session ID ${vicidialSessionId} for bot ${botId}`);
+    } else {
+      console.warn(`No VICIdial session ID found in response for bot ${botId}`);
+    }
+    console.log(`Outbound call initiated to bot ${botId}:`, response);
     return response;
   } catch (err) {
     console.error('Error initiating call to bot:', err);
