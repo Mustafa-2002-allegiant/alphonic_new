@@ -27,19 +27,26 @@ async function callVicidialAPI(params) {
     ...params,
   });
 
+  const url = BASE_URL;
+  console.log("[DEBUG] callVicidialAPI URL:", url);
   console.log("[DEBUG] callVicidialAPI params:", params);
   console.log("[DEBUG] callVicidialAPI POST body:", body);
 
   try {
-    const res = await fetch(BASE_URL, {
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body,
       agent,
     });
 
+    console.log("[DEBUG] callVicidialAPI HTTP status:", res.status);
+    console.log("[DEBUG] callVicidialAPI HTTP headers:", JSON.stringify([...res.headers]));
     const text = await res.text();
-    console.log(`[DEBUG] VICIdial ${params.function} raw response:`, text);
+    console.log(`[DEBUG] VICIdial ${params.function} raw response:`, JSON.stringify(text));
+    if (!text) {
+      console.error("[ERROR] callVicidialAPI: Empty response. Possible causes: wrong credentials, campaign, or server-side PHP error.");
+    }
     return text;
   } catch (err) {
     console.error(`[ERROR] callVicidialAPI fetch failed:`, err);
@@ -66,34 +73,37 @@ async function loginAgent(
   form.append("phone_pass", phone_pass);
   form.append("campaign", campaign_id);
 
+  const url = `${process.env.VICIDIAL_BASE_URL}/agc/api.php`;
+  console.log("[DEBUG] loginAgent URL:", url);
   console.log("[DEBUG] loginAgent POST body:", form.toString());
   console.log("[DEBUG] loginAgent params:", {
-    agent_user,
-    agent_pass,
-    phone_login,
-    phone_pass,
-    campaign_id,
+    agent_user, agent_pass, phone_login, phone_pass, campaign_id
   });
 
   try {
-    const response = await fetch(`${process.env.VICIDIAL_BASE_URL}/agc/api.php`, {
+    const response = await fetch(url, {
       method: "POST",
       body: form,
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
     });
 
+    console.log("[DEBUG] loginAgent HTTP status:", response.status);
+    console.log("[DEBUG] loginAgent HTTP headers:", JSON.stringify([...response.headers]));
     const responseText = await response.text();
-console.log("[DEBUG] loginAgent raw response:", JSON.stringify(responseText));
-
+    console.log("[DEBUG] loginAgent raw response:", JSON.stringify(responseText));
 
     const sessionMatch = responseText.match(/SESSION_ID=(\d+)/i);
     if (!sessionMatch) {
       console.error("[ERROR] Could not extract session_id. Full response:", responseText);
+      if (!responseText) {
+        console.error("[ERROR] loginAgent: Empty response. Possible causes: wrong credentials, campaign, or server-side PHP error.");
+      }
       throw new Error("Failed to extract session_id from login response");
     }
 
     const session_id = sessionMatch[1];
     sessionMap.set(agent_user, session_id);
+    console.log(`[DEBUG] loginAgent: Successfully extracted session_id: ${session_id}`);
     return session_id;
   } catch (err) {
     console.error("[ERROR] loginAgent fetch failed:", err);
