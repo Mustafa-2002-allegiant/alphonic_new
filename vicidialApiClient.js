@@ -83,7 +83,8 @@ async function loginAgent(
     });
 
     const responseText = await response.text();
-    console.log("[DEBUG] loginAgent raw response:", responseText);
+console.log("[DEBUG] loginAgent raw response:", JSON.stringify(responseText));
+
 
     const sessionMatch = responseText.match(/SESSION_ID=(\d+)/i);
     if (!sessionMatch) {
@@ -104,10 +105,15 @@ module.exports = {
   loginAgent,
 
   callAgent: async (agent_user) => {
+    const agent_pass = 'hello123'; // or fetch from env or db
+    const phone_login = agent_user;
+    const phone_pass = 'hello123';
+    const campaign_id = '002';
+  
     const session_id =
       sessionMap.get(agent_user) ||
-      (await loginAgent(agent_user)); // 🧠 Uses .env for remaining args
-
+      await loginAgent(agent_user, agent_pass, phone_login, phone_pass, campaign_id);
+  
     return callVicidialAPI({
       function: "external_dial",
       agent_user,
@@ -115,13 +121,14 @@ module.exports = {
       session_id,
       phone_code: "1",
       number_to_dial: "8600051",
-      campaign: CAMPAIGN,
+      campaign: campaign_id,
       search: "NO",
       preview: "NO",
       focus: "YES",
-      format: "text",
+      format: "text"
     });
-  },
+  }
+  
 
   getRecordingStatus: async (agent_user) => {
     const session_id = sessionMap.get(agent_user);
