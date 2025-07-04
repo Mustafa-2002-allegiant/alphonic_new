@@ -239,8 +239,7 @@ app.post("/test-voice", async (req, res) => {
 app.post("/start-bot", async (req, res) => {
   const audioBuffer = req.file?.buffer || req.body.audio || Buffer.from([]);
   const lastBotMessage = req.query.lastLine || "Do you want to speak with a human?";
-  const customerPhone = req.query.phone || "+11234567890"; // fallback if not provided
-
+  const customerPhone = req.query.phone || "+11234567890";
 
   try {
     recognizeLiveAudio(audioBuffer, async (err, userText) => {
@@ -254,36 +253,26 @@ app.post("/start-bot", async (req, res) => {
 
       let action = "unrecognized";
       let message = "Sorry, I didn't understand that.";
-      
       if (intent === "yes") {
-        const botChannel = req.query.channel || "SIP/8024"; // <-- You should pass this from frontend
+        const botChannel = req.query.channel || "SIP/8024";
         await transferToCloser(botChannel);
         action = "transfer_to_agent";
         message = "Okay, transferring you to a live agent...";
-      }
-       else if (intent === "no") {
+      } else if (intent === "no") {
         action = "end_call";
         message = "Okay, ending the call. Have a great day!";
       } else if (intent === "repeat") {
         action = "repeat";
         message = lastBotMessage;
       }
-      
 
       const result = { userText, intent, action, message };
-
-      // Generate a unique 7-digit session ID
-      let sessionId, sessionExists = true;
-      while (sessionExists) {
-        sessionId = generateSessionId();
-        const existing = await db.collection("bot_sessions").doc(sessionId).get();
-        sessionExists = existing.exists;
-      }
-      await db.collection("bot_sessions").doc(sessionId).set({
+      // Store session in Firestore using Firestore's doc ID only
+      const sessionRef = await db.collection("bot_sessions").add({
         ...result,
         timestamp: new Date().toISOString(),
       });
-      result.sessionId = sessionId; // Optionally return the sessionId in the response
+      result.sessionId = sessionRef.id;
       return res.json(result);
     });
   } catch (err) {
@@ -296,18 +285,15 @@ app.post("/start-bot", async (req, res) => {
 
 app.get("/start-bot", async (req, res) => {
   const { debugIntent, channel } = req.query;
-
   if (!debugIntent || !channel) {
     return res.status(400).json({ error: "Missing debugIntent or channel" });
   }
-
   const message =
     debugIntent === "yes"
       ? "Okay, transferring you to a live agent..."
       : debugIntent === "no"
       ? "Okay, ending the call."
       : "Sorry, I didn't catch that.";
-
   let action = "unrecognized";
   if (debugIntent === "yes") {
     const transferToCloser = require("./transferToCloser");
@@ -316,15 +302,8 @@ app.get("/start-bot", async (req, res) => {
   } else if (debugIntent === "no") {
     action = "end_call";
   }
-
-  // Generate a unique 7-digit session ID
-  let sessionId, sessionExists = true;
-  while (sessionExists) {
-    sessionId = generateSessionId();
-    const existing = await db.collection("bot_sessions").doc(sessionId).get();
-    sessionExists = existing.exists;
-  }
-  await db.collection("bot_sessions").doc(sessionId).set({
+  // Store session in Firestore using Firestore's doc ID only
+  const sessionRef = await db.collection("bot_sessions").add({
     userText: debugIntent,
     intent: debugIntent,
     action,
@@ -336,7 +315,7 @@ app.get("/start-bot", async (req, res) => {
     intent: debugIntent,
     action,
     message,
-    sessionId
+    sessionId: sessionRef.id
   });
 });
 
@@ -580,97 +559,121 @@ app.get("/bot-assignments", async (req, res) => {
 });
 
 // Start a new bot session: returns first question and TTS audio
+const {
+  callAgent,
+  getRecordingStatus,
+  externalDial
+} = require("./vicidialApiClient");
+
 app.post("/start-bot-session", async (req, res) => {
-  const { botId } = req.body;
-  if (!botId) return res.status(400).json({ error: "botId required" });
+  const { agent_user, botId } = req.body;
+  if (!agent_user || !botId) return res.status(400).json({ error: "agent_user and botId required" });
+
   try {
     const botDoc = await db.collection("bots").doc(botId).get();
     if (!botDoc.exists) return res.status(404).json({ error: "Bot not found" });
-    const bot = botDoc.data();
-    const script = bot.script || [];
-    if (!Array.isArray(script) || script.length === 0) return res.status(400).json({ error: "Bot script is empty" });
-    const voice = bot.voice || "en-US-Wavenet-F";
-    // Synthesize first question
-    const firstQuestion = script[0];
-    const audioPath = await speakText(firstQuestion, voice);
-    // Originate call or remote agent via AMI/API (replace with your actual call origination logic)
-    const vicidialResponse = await originateCallToBotOrRemoteAgent(botId); // This should return the VICIdial session ID
-    const vicidialSessionId = vicidialResponse.confexten || vicidialResponse.SESSIONID;
-    // Create session in Firestore with VICIdial session ID
+
+    // Trigger agent session
+    await callAgent(agent_user);
+
+    // Wait and get session ID (simplified)
+    const status = await getRecordingStatus(agent_user);
+
+    const script = botDoc.data().script || [];
+    const voice = botDoc.data().voice || "en-US-Wavenet-F";
+
+    const audioPath = await speakText(script[0], voice);
+
     const sessionRef = await db.collection("bot_sessions").add({
       botId,
+      agent_user,
       currentStep: 0,
       responses: [],
       createdAt: new Date().toISOString(),
-      done: false,
-      vicidialSessionId // Store the VICIdial session ID
-    });
-    return res.json({
-      sessionId: sessionRef.id, // Firestore doc ID for your tracking
-      vicidialSessionId, // VICIdial session ID for call control
-      question: firstQuestion,
-      audioPath: path.basename(audioPath),
-      step: 0,
       done: false
     });
+
+    return res.json({
+      sessionId: sessionRef.id,
+      question: script[0],
+      audioPath: path.basename(audioPath),
+      step: 0
+    });
   } catch (err) {
+    console.error("❌ start-bot-session error:", err);
     return res.status(500).json({ error: err.message });
   }
 });
 
+
 // Respond to a bot session: process user audio, advance script, return next question/audio
+const { transferCall, hangupCall, setStatus } = require("./vicidialApiClient");
+
 app.post("/bot-session/:sessionId/respond", async (req, res) => {
   const { sessionId } = req.params;
-  const userAudio = req.body; // Expect raw audio buffer (WAV)
-  if (!userAudio || !Buffer.isBuffer(userAudio)) {
-    return res.status(400).json({ error: "User audio (WAV buffer) required" });
-  }
+  const audioBuffer = req.body.audio;
+  if (!audioBuffer) return res.status(400).json({ error: "audio required" });
+
   try {
     const sessionRef = db.collection("bot_sessions").doc(sessionId);
     const sessionDoc = await sessionRef.get();
     if (!sessionDoc.exists) return res.status(404).json({ error: "Session not found" });
+
     const session = sessionDoc.data();
-    if (session.done) return res.json({ done: true, message: "Session already completed", allResponses: session.responses });
-    // Get bot script
+    if (session.done) return res.json({ done: true, message: "Session complete" });
+
     const botDoc = await db.collection("bots").doc(session.botId).get();
-    if (!botDoc.exists) return res.status(404).json({ error: "Bot not found" });
     const bot = botDoc.data();
-    const script = bot.script || [];
-    const voice = bot.voice || "en-US-Wavenet-F";
-    // Transcribe user audio
-    recognizeLiveAudio(userAudio, script[session.currentStep], async (err, sttResult) => {
-      if (err) return res.status(500).json({ error: "STT failed" });
-      const userText = sttResult.text || "";
-      // Optionally classify response
-      const classification = classifyResponse(userText);
-      // Save response
-      const responses = session.responses.concat([{ step: session.currentStep, userText, classification }]);
-      let nextStep = session.currentStep + 1;
-      let done = nextStep >= script.length;
-      let nextQuestion = done ? null : script[nextStep];
-      let nextAudioPath = null;
-      if (!done) {
-        nextAudioPath = await speakText(nextQuestion, voice);
+    const script = bot.script;
+    const voice = bot.voice;
+
+    recognizeLiveAudio(audioBuffer, script[session.currentStep], async (err, resultText) => {
+      const classification = classifyResponse(resultText);
+      const responses = session.responses.concat([{ step: session.currentStep, text: resultText, classification }]);
+
+      let done = false;
+      let message = "";
+      let audioPath = null;
+
+      if (classification === "yes") {
+        await transferCall(session.agent_user, "8600051"); // your closer extension
+        message = "Transferring to live agent.";
+        done = true;
+      } else if (classification === "no") {
+        await setStatus(session.agent_user, "A");
+        await hangupCall(session.agent_user);
+        message = "Ending call.";
+        done = true;
+      } else {
+        const nextStep = session.currentStep + 1;
+        if (nextStep >= script.length) {
+          done = true;
+          message = "Script complete.";
+        } else {
+          message = script[nextStep];
+          audioPath = await speakText(message, voice);
+        }
+
+        await sessionRef.update({
+          currentStep: nextStep,
+          responses,
+          done
+        });
       }
-      // Update session
-      await sessionRef.update({
-        currentStep: nextStep,
-        responses,
-        done
-      });
+
       return res.json({
-        step: nextStep,
-        done,
-        nextQuestion,
-        audioPath: nextAudioPath ? path.basename(nextAudioPath) : null,
         classification,
-        allResponses: responses
+        message,
+        done,
+        audioPath: audioPath ? path.basename(audioPath) : null
       });
     });
   } catch (err) {
+    console.error("❌ bot-session response error:", err);
     return res.status(500).json({ error: err.message });
   }
 });
+
 
 
 // ───────────────────────────────────────────────────────────────────────────────
