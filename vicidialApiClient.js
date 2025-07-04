@@ -2,8 +2,8 @@ const fetch = require("node-fetch");
 const qs = require("querystring");
 
 const BASE_URL = "https://138.201.82.40/agc/api.php";
-const API_USER = "admin";             // Replace with actual VICIdial API user
-const API_PASS = "1234";              // Your admin API password
+const API_USER = "9999";             // Replace with actual VICIdial API user
+const API_PASS = "i6yhtrhgfh";              // Your admin API password
 const SOURCE = "botapi";
 const CAMPAIGN = "001";               // Replace if dynamic
 
