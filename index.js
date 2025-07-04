@@ -31,7 +31,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use("/audio", express.static(path.join(__dirname, "audio")));
 
 app.post("/start-bot-session", async (req, res) => {
-  await callAgent(agent_user); // Will now ring the agent using proper external_dial
+  await transferCall(agent_user);
   const { agent_user, botId } = req.body;
   if (!agent_user || !botId) return res.status(400).json({ error: "agent_user and botId required" });
 

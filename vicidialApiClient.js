@@ -79,13 +79,13 @@ module.exports = {
     }),
 
   // 🔹 Transfer bot call to real agent
-  transferCall: (agent_user, phone_number) =>
+  transferCall: (agent_user, phone_number = "8600051") =>
     callVicidialAPI({
       function: "transfer_conference",
       agent_user,
       session_user: agent_user,
-      value: "DIAL_WITH_CUSTOMER",
-      phone_number,
-      format: "text"
-    })
+      value: "DIAL_WITH_CUSTOMER", // Required to bridge
+      phone_number
+    }),
+  
 };
