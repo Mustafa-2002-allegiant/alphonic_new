@@ -1,3 +1,8 @@
+
+// ───────────────────────────────────────────────────────────────────────────────
+//  index.js (CLEANED) - Rewritten to use VICIdial Agent API only
+// ───────────────────────────────────────────────────────────────────────────────
+
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
@@ -28,7 +33,6 @@ app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 app.use("/audio", express.static(path.join(__dirname, "audio")));
 
-// Start a bot session (assign to agent + return TTS of first script line)
 app.post("/start-bot-session", async (req, res) => {
   const { agent_user, botId } = req.body;
   if (!agent_user || !botId) return res.status(400).json({ error: "agent_user and botId required" });
@@ -38,7 +42,7 @@ app.post("/start-bot-session", async (req, res) => {
     if (!botDoc.exists) return res.status(404).json({ error: "Bot not found" });
 
     await callAgent(agent_user);
-    const status = await getRecordingStatus(agent_user); // just for debug/logging
+    const status = await getRecordingStatus(agent_user);
 
     const script = botDoc.data().script || [];
     const voice = botDoc.data().voice || "en-US-Wavenet-F";
@@ -66,7 +70,6 @@ app.post("/start-bot-session", async (req, res) => {
   }
 });
 
-// Respond to bot session and handle STT + classification
 app.post("/bot-session/:sessionId/respond", async (req, res) => {
   const { sessionId } = req.params;
   const audioBuffer = req.body.audio;
@@ -132,7 +135,44 @@ app.post("/bot-session/:sessionId/respond", async (req, res) => {
   }
 });
 
-// Start Express server
+
+// VICIdial DB connection and extra routes
+const mysql = require("mysql");
+
+const vcdialDB = mysql.createConnection({
+  host: "138.201.82.40",
+  user: "cron",
+  password: "r2qXhMxNCcnWXPtm",
+  database: "asterisk"
+});
+
+app.get("/vcdial/agents", (req, res) => {
+  vcdialDB.query("SELECT user, full_name, user_level FROM vicidial_users WHERE user_level >= 1", (err, results) => {
+    if (err) return res.status(500).send("DB Error: " + err);
+    res.json(results);
+  });
+});
+
+app.get("/vcdial/campaigns", (req, res) => {
+  vcdialDB.query("SELECT campaign_id, campaign_name FROM vicidial_campaigns", (err, results) => {
+    if (err) return res.status(500).send("DB Error: " + err);
+    res.json(results);
+  });
+});
+
+app.post("/assign-bot", async (req, res) => {
+  const { agent_user, botId } = req.body;
+  if (!agent_user || !botId) return res.status(400).json({ error: "Missing agent_user or botId" });
+
+  try {
+    await db.collection("agent_bot_assignments").doc(agent_user).set({ botId });
+    return res.json({ message: `Bot ${botId} assigned to agent ${agent_user}` });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Cleaned VICIdial bot backend running on port ${PORT}`);
 });
