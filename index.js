@@ -31,11 +31,11 @@ app.use(express.json({ limit: "10mb" }));
 app.use("/audio", express.static(path.join(__dirname, "audio")));
 
 app.post("/start-bot-session", async (req, res) => {
-  await transferCall(agent_user);
   const { agent_user, botId } = req.body;
   if (!agent_user || !botId) return res.status(400).json({ error: "agent_user and botId required" });
 
   try {
+    await transferCall(agent_user);  // ✅ Now agent_user is defined
     const botDoc = await db.collection("bots").doc(botId).get();
     if (!botDoc.exists) return res.status(404).json({ error: "Bot not found" });
 
@@ -67,6 +67,7 @@ app.post("/start-bot-session", async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
+
 
 app.post("/bot-session/:sessionId/respond", async (req, res) => {
   const { sessionId } = req.params;
