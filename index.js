@@ -1,4 +1,3 @@
-
 // ───────────────────────────────────────────────────────────────────────────────
 //  index.js (CLEANED) - Rewritten to use VICIdial Agent API only
 // ───────────────────────────────────────────────────────────────────────────────
@@ -19,9 +18,7 @@ const classifyResponse = require("./classifyResponse");
 const {
   callAgent,
   getRecordingStatus,
-  externalDial,
   hangupCall,
-  pauseAgent,
   setStatus,
   transferCall,
 } = require("./vicidialApiClient");
@@ -135,43 +132,66 @@ app.post("/bot-session/:sessionId/respond", async (req, res) => {
   }
 });
 
-
-// VICIdial DB connection and extra routes
-const mysql = require("mysql");
-
-const vcdialDB = mysql.createConnection({
-  host: "138.201.82.40",
-  user: "cron",
-  password: "r2qXhMxNCcnWXPtm",
-  database: "asterisk"
-});
-
-app.get("/vcdial/agents", (req, res) => {
-  vcdialDB.query("SELECT user, full_name, user_level FROM vicidial_users WHERE user_level >= 1", (err, results) => {
-    if (err) return res.status(500).send("DB Error: " + err);
-    res.json(results);
-  });
-});
-
-app.get("/vcdial/campaigns", (req, res) => {
-  vcdialDB.query("SELECT campaign_id, campaign_name FROM vicidial_campaigns", (err, results) => {
-    if (err) return res.status(500).send("DB Error: " + err);
-    res.json(results);
-  });
-});
-
-app.post("/assign-bot", async (req, res) => {
-  const { agent_user, botId } = req.body;
-  if (!agent_user || !botId) return res.status(400).json({ error: "Missing agent_user or botId" });
-
+// Rewritten VICIdial API routes using PHP endpoints
+app.get("/vcdial-agents", async (req, res) => {
   try {
-    await db.collection("agent_bot_assignments").doc(agent_user).set({ botId });
-    return res.json({ message: `Bot ${botId} assigned to agent ${agent_user}` });
+    const response = await fetch("https://allegientlead.dialerhosting.com/get_vicidial_agents.php");
+    if (!response.ok) throw new Error("VICIdial agent PHP fetch failed");
+    const data = await response.json();
+    return res.json(data);
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
 });
 
+app.get("/campaigns", async (req, res) => {
+  try {
+    const response = await fetch("https://allegientlead.dialerhosting.com/get_campaigns.php");
+    if (!response.ok) throw new Error("Campaign PHP fetch failed");
+    const data = await response.json();
+    return res.json(data);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
+  const { botId, campaignId, agentId } = req.body;
+  if (!botId || !campaignId || !agentId)
+    return res.status(400).json({ error: "botId, campaignId and agentId are required" });
+
+  try {
+    await db.collection("bot_assignments").add({
+      botId,
+      campaignId,
+      agentId,
+      isActive: true,
+      createdAt: new Date().toISOString(),
+    });
+
+    const phpAgentRes = await fetch("https://allegientlead.dialerhosting.com/assign_agent_to_campaign.php", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentId, campaignId })
+    });
+
+    if (!phpAgentRes.ok) throw new Error("Failed assigning agent in VICIdial");
+
+    const phpBotRes = await fetch("https://allegientlead.dialerhosting.com/update_bot_assignments.php", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ botId, campaignId, agentId })
+    });
+
+    const bodyText = await phpBotRes.text();
+    if (!phpBotRes.ok) throw new Error(`PHP bot error: ${bodyText}`);
+
+    const botResult = JSON.parse(bodyText);
+    return res.json({ success: true, botResult });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Cleaned VICIdial bot backend running on port ${PORT}`);
