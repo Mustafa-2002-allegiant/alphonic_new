@@ -154,6 +154,33 @@ app.get("/campaigns", async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
+app.get("/active-bots", async (req, res) => {
+  try {
+    const snapshot = await db.collection("bots").get();
+    const bots = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    return res.json(bots);
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+
+app.post("/bot", async (req, res) => {
+  const { botId, script, voice } = req.body;
+  if (!botId || !script) return res.status(400).json({ error: "Missing botId or script" });
+
+  try {
+    await db.collection("bots").doc(botId).set({
+      bot_name: botId,
+      script,
+      voice,
+      createdAt: new Date().toISOString()
+    });
+    return res.json({ message: `Bot ${botId} created.` });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
   const { botId, campaignId, agentId } = req.body;
