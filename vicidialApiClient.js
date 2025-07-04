@@ -102,87 +102,87 @@ console.log("[DEBUG] loginAgent raw response:", JSON.stringify(responseText));
 }
 
 module.exports = {
-  loginAgent,
-
-  callAgent: async (agent_user) => {
-    const agent_pass = 'hello123'; // or fetch from env or db
-    const phone_login = agent_user;
-    const phone_pass = 'hello123';
-    const campaign_id = '002';
+    loginAgent,
   
-    const session_id =
-      sessionMap.get(agent_user) ||
-      await loginAgent(agent_user, agent_pass, phone_login, phone_pass, campaign_id);
+    callAgent: async (agent_user) => {
+      const agent_pass = 'hello123';
+      const phone_login = agent_user;
+      const phone_pass = 'hello123';
+      const campaign_id = '002';
   
-    return callVicidialAPI({
-      function: "external_dial",
-      agent_user,
-      session_user: agent_user,
-      session_id,
-      phone_code: "1",
-      number_to_dial: "8600051",
-      campaign: campaign_id,
-      search: "NO",
-      preview: "NO",
-      focus: "YES",
-      format: "text"
-    });
-  }
+      const session_id =
+        sessionMap.get(agent_user) ||
+        await loginAgent(agent_user, agent_pass, phone_login, phone_pass, campaign_id);
   
-
-  getRecordingStatus: async (agent_user) => {
-    const session_id = sessionMap.get(agent_user);
-    return callVicidialAPI({
-      function: "recording",
-      agent_user,
-      session_user: agent_user,
-      session_id,
-      value: "STATUS",
-    });
-  },
-
-  hangupCall: async (agent_user) => {
-    const session_id = sessionMap.get(agent_user);
-    return callVicidialAPI({
-      function: "external_hangup",
-      agent_user,
-      session_user: agent_user,
-      session_id,
-      value: "1",
-    });
-  },
-
-  pauseAgent: async (agent_user) => {
-    const session_id = sessionMap.get(agent_user);
-    return callVicidialAPI({
-      function: "external_pause",
-      agent_user,
-      session_user: agent_user,
-      session_id,
-      value: "PAUSE",
-    });
-  },
-
-  setStatus: async (agent_user, status) => {
-    const session_id = sessionMap.get(agent_user);
-    return callVicidialAPI({
-      function: "external_status",
-      agent_user,
-      session_user: agent_user,
-      session_id,
-      value: status,
-    });
-  },
-
-  transferCall: async (agent_user, phone_number = "8600051") => {
-    const session_id = sessionMap.get(agent_user);
-    return callVicidialAPI({
-      function: "transfer_conference",
-      agent_user,
-      session_user: agent_user,
-      session_id,
-      value: "DIAL_WITH_CUSTOMER",
-      phone_number,
-    });
-  },
-};
+      return callVicidialAPI({
+        function: "external_dial",
+        agent_user,
+        session_user: agent_user,
+        session_id,
+        phone_code: "1",
+        number_to_dial: "8600051",
+        campaign: campaign_id,
+        search: "NO",
+        preview: "NO",
+        focus: "YES",
+        format: "text"
+      });
+    },
+  
+    getRecordingStatus: async (agent_user) => {
+      const session_id = sessionMap.get(agent_user);
+      return callVicidialAPI({
+        function: "recording",
+        agent_user,
+        session_user: agent_user,
+        session_id,
+        value: "STATUS",
+      });
+    },
+  
+    hangupCall: async (agent_user) => {
+      const session_id = sessionMap.get(agent_user);
+      return callVicidialAPI({
+        function: "external_hangup",
+        agent_user,
+        session_user: agent_user,
+        session_id,
+        value: "1",
+      });
+    },
+  
+    pauseAgent: async (agent_user) => {
+      const session_id = sessionMap.get(agent_user);
+      return callVicidialAPI({
+        function: "external_pause",
+        agent_user,
+        session_user: agent_user,
+        session_id,
+        value: "PAUSE",
+      });
+    },
+  
+    setStatus: async (agent_user, status) => {
+      const session_id = sessionMap.get(agent_user);
+      return callVicidialAPI({
+        function: "external_status",
+        agent_user,
+        session_user: agent_user,
+        session_id,
+        value: status,
+      });
+    },
+  
+    transferCall: async (agent_user, phone_number = "8600051") => {
+      const session_id = sessionMap.get(agent_user);
+      return callVicidialAPI({
+        function: "transfer_conference",
+        agent_user,
+        session_user: agent_user,
+        session_id,
+        value: "DIAL_WITH_CUSTOMER",
+        phone_number,
+      });
+    },
+  };
+  
