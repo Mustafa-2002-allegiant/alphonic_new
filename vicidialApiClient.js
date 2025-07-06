@@ -5,7 +5,7 @@ const https = require("https");
 
 const AGENT = new https.Agent({ rejectUnauthorized: false });
 
-const BASE_URL    = `${process.env.VICIDIAL_BASE_URL}/agc/api.php`;
+const BASE_URL    = `${process.env.VICIDIAL_BASE_URL}/agc/agent_api.php`;
 const API_USER    = process.env.VICIDIAL_API_USER;
 const API_PASS    = process.env.VICIDIAL_API_PASS;
 const SOURCE      = process.env.VICIDIAL_SOURCE || "botapi";
