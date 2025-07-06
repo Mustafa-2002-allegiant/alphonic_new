@@ -41,7 +41,8 @@ async function loginAgent(agent_user) {
   form.append("user",        API_USER);
   form.append("pass",        API_PASS);
   form.append("source",      SOURCE);
-  form.append("function",    "agent_login");
+- form.append("function",    "agent_login");    // ← this is wrong: no such function
++ form.append("function",    "log_agent");      // ← the correct Agent‐API login call
   form.append("agent_user",  agent_user);
   form.append("agent_pass",  process.env.VICIDIAL_AGENT_PASS);
   form.append("phone_login", process.env.VICIDIAL_PHONE_LOGIN);
@@ -55,7 +56,7 @@ async function loginAgent(agent_user) {
     body:    form.toString()
   });
   const txt = await resp.text();
-  console.log("🔐 agent_login →", txt);
+  console.log("🔐 log_agent →", txt);
 
   const m = txt.match(/SESSION_ID=(\d+)/i);
   if (!m) {
