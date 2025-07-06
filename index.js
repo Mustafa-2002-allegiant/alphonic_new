@@ -1,45 +1,45 @@
+// ───────────────────────────────────────────────────────────────────────────────
+// index.js
+// ───────────────────────────────────────────────────────────────────────────────
 require("dotenv").config();
-const express = require("express");
-const cors    = require("cors");
-const path    = require("path");
-const fetch   = require("node-fetch");
-const qs      = require("querystring");
+const express   = require("express");
+const cors      = require("cors");
+const path      = require("path");
+const fetch     = require("node-fetch");
+const qs        = require("querystring");
 
-const db                = require("./firebaseConfig");
-const { speakText }     = require("./TTSService");
+const db                   = require("./firebaseConfig");
+const { speakText }        = require("./TTSService");
 const { recognizeLiveAudio } = require("./liveSTTHandler");
-const classifyResponse  = require("./classifyResponse");
+const classifyResponse     = require("./classifyResponse");
 
 const {
   callAgent,
   getRecordingStatus,
   hangupCall,
   setStatus,
-  transferCall,
+  transferCall
 } = require("./vicidialApiClient");
 
-const app = express();
+const app  = express();
+const PORT = process.env.PORT || 8080;
+
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 app.use("/audio", express.static(path.join(__dirname, "audio")));
 
-const PORT = process.env.PORT || 8080;
-
-// debug: dump server/PHP info
+// debug endpoint
 app.get("/debug/webserver", async (req, res) => {
   try {
-    // re-use your callVicidialAPI helper
     const info = await require("./vicidialApiClient").callVicidialAPI({
       function: "webserver"
     });
-    // send back raw text
     res.type("text/plain").send(info);
   } catch (err) {
     console.error("❌ debug/webserver error:", err);
     res.status(500).send(err.toString());
   }
 });
-
 
 app.post("/start-bot-session", async (req, res) => {
   const { agent_user, botId } = req.body;
@@ -48,10 +48,7 @@ app.post("/start-bot-session", async (req, res) => {
   }
 
   try {
-    // warm-up transfer (optional)
     await transferCall(agent_user);
-
-    // start conversation
     await callAgent(agent_user);
     await getRecordingStatus(agent_user);
 
@@ -60,13 +57,16 @@ app.post("/start-bot-session", async (req, res) => {
       return res.status(404).json({ error: "Bot not found" });
     }
 
-    const script = botDoc.data().script || [];
-    const voice  = botDoc.data().voice  || "en-US-Wavenet-F";
+    const script   = botDoc.data().script || [];
+    const voice    = botDoc.data().voice  || "en-US-Wavenet-F";
     const audioPath = await speakText(script[0], voice);
 
     const sessionRef = await db.collection("bot_sessions").add({
-      botId, agent_user, currentStep: 0, responses: [], done: false,
-      createdAt: new Date().toISOString()
+      botId, agent_user,
+      currentStep: 0,
+      responses:   [],
+      done:        false,
+      createdAt:   new Date().toISOString()
     });
 
     res.json({
@@ -89,10 +89,14 @@ app.post("/bot-session/:sessionId/respond", async (req, res) => {
   try {
     const sessionRef = db.collection("bot_sessions").doc(sessionId);
     const sessionDoc = await sessionRef.get();
-    if (!sessionDoc.exists) return res.status(404).json({ error: "Session not found" });
+    if (!sessionDoc.exists) {
+      return res.status(404).json({ error: "Session not found" });
+    }
 
     const session = sessionDoc.data();
-    if (session.done) return res.json({ done: true, message: "Session complete" });
+    if (session.done) {
+      return res.json({ done: true, message: "Session complete" });
+    }
 
     const botDoc = await db.collection("bots").doc(session.botId).get();
     const script = botDoc.data().script;
@@ -100,7 +104,7 @@ app.post("/bot-session/:sessionId/respond", async (req, res) => {
 
     recognizeLiveAudio(audioBuffer, script[session.currentStep], async (err, resultText) => {
       const classification = classifyResponse(resultText);
-      const responses = [ ...session.responses, { step: session.currentStep, text: resultText, classification } ];
+      const responses      = [ ...session.responses, { step: session.currentStep, text: resultText, classification } ];
 
       let done    = false;
       let message = "";
@@ -129,7 +133,12 @@ app.post("/bot-session/:sessionId/respond", async (req, res) => {
         await sessionRef.update({ currentStep: nextStep, responses, done });
       }
 
-      res.json({ classification, message, done, audioPath: audio ? path.basename(audio) : null });
+      res.json({
+        classification,
+        message,
+        done,
+        audioPath: audio ? path.basename(audio) : null
+      });
     });
   } catch (err) {
     console.error("❌ bot-session error:", err);
