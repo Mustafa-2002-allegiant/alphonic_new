@@ -1,19 +1,14 @@
-// ───────────────────────────────────────────────────────────────────────────────
-//  index.js (CLEANED) - Rewritten to use VICIdial Agent API only
-// ───────────────────────────────────────────────────────────────────────────────
-
 require("dotenv").config();
 const express = require("express");
-const cors = require("cors");
-const path = require("path");
-const fetch = require("node-fetch");
-const bcrypt = require("bcryptjs");
-const qs = require("querystring");
+const cors    = require("cors");
+const path    = require("path");
+const fetch   = require("node-fetch");
+const qs      = require("querystring");
 
-const db = require("./firebaseConfig");
-const { speakText } = require("./TTSService");
+const db                = require("./firebaseConfig");
+const { speakText }     = require("./TTSService");
 const { recognizeLiveAudio } = require("./liveSTTHandler");
-const classifyResponse = require("./classifyResponse");
+const classifyResponse  = require("./classifyResponse");
 
 const {
   callAgent,
@@ -24,54 +19,55 @@ const {
 } = require("./vicidialApiClient");
 
 const app = express();
-const PORT = process.env.PORT || 8080;
-
 app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 app.use("/audio", express.static(path.join(__dirname, "audio")));
 
+const PORT = process.env.PORT || 8080;
+
 app.post("/start-bot-session", async (req, res) => {
   const { agent_user, botId } = req.body;
-  if (!agent_user || !botId) return res.status(400).json({ error: "agent_user and botId required" });
+  if (!agent_user || !botId) {
+    return res.status(400).json({ error: "agent_user and botId required" });
+  }
 
   try {
-    await transferCall(agent_user);  // ✅ Now agent_user is defined
-    const botDoc = await db.collection("bots").doc(botId).get();
-    if (!botDoc.exists) return res.status(404).json({ error: "Bot not found" });
+    // warm-up transfer (optional)
+    await transferCall(agent_user);
 
+    // start conversation
     await callAgent(agent_user);
-    const status = await getRecordingStatus(agent_user);
+    await getRecordingStatus(agent_user);
+
+    const botDoc = await db.collection("bots").doc(botId).get();
+    if (!botDoc.exists) {
+      return res.status(404).json({ error: "Bot not found" });
+    }
 
     const script = botDoc.data().script || [];
-    const voice = botDoc.data().voice || "en-US-Wavenet-F";
-
+    const voice  = botDoc.data().voice  || "en-US-Wavenet-F";
     const audioPath = await speakText(script[0], voice);
 
     const sessionRef = await db.collection("bot_sessions").add({
-      botId,
-      agent_user,
-      currentStep: 0,
-      responses: [],
-      createdAt: new Date().toISOString(),
-      done: false,
+      botId, agent_user, currentStep: 0, responses: [], done: false,
+      createdAt: new Date().toISOString()
     });
 
-    return res.json({
+    res.json({
       sessionId: sessionRef.id,
-      question: script[0],
+      question:  script[0],
       audioPath: path.basename(audioPath),
-      step: 0
+      step:      0
     });
   } catch (err) {
     console.error("❌ start-bot-session error:", err);
-    return res.status(500).json({ error: err.message });
+    res.status(500).json({ error: err.message });
   }
 });
 
-
 app.post("/bot-session/:sessionId/respond", async (req, res) => {
   const { sessionId } = req.params;
-  const audioBuffer = req.body.audio;
+  const audioBuffer   = req.body.audio;
   if (!audioBuffer) return res.status(400).json({ error: "audio required" });
 
   try {
@@ -83,54 +79,45 @@ app.post("/bot-session/:sessionId/respond", async (req, res) => {
     if (session.done) return res.json({ done: true, message: "Session complete" });
 
     const botDoc = await db.collection("bots").doc(session.botId).get();
-    const bot = botDoc.data();
-    const script = bot.script;
-    const voice = bot.voice;
+    const script = botDoc.data().script;
+    const voice  = botDoc.data().voice;
 
     recognizeLiveAudio(audioBuffer, script[session.currentStep], async (err, resultText) => {
       const classification = classifyResponse(resultText);
-      const responses = session.responses.concat([{ step: session.currentStep, text: resultText, classification }]);
+      const responses = [ ...session.responses, { step: session.currentStep, text: resultText, classification } ];
 
-      let done = false;
+      let done    = false;
       let message = "";
-      let audioPath = null;
+      let audio   = null;
 
       if (classification === "yes") {
-        await transferCall(session.agent_user, "8600051");
+        await transferCall(session.agent_user);
+        done    = true;
         message = "Transferring to live agent.";
-        done = true;
-      } else if (classification === "no") {
+      }
+      else if (classification === "no") {
         await setStatus(session.agent_user, "A");
         await hangupCall(session.agent_user);
+        done    = true;
         message = "Ending call.";
-        done = true;
-      } else {
+      }
+      else {
         const nextStep = session.currentStep + 1;
         if (nextStep >= script.length) {
-          done = true;
+          done    = true;
           message = "Script complete.";
         } else {
           message = script[nextStep];
-          audioPath = await speakText(message, voice);
+          audio   = await speakText(message, voice);
         }
-
-        await sessionRef.update({
-          currentStep: nextStep,
-          responses,
-          done
-        });
+        await sessionRef.update({ currentStep: nextStep, responses, done });
       }
 
-      return res.json({
-        classification,
-        message,
-        done,
-        audioPath: audioPath ? path.basename(audioPath) : null
-      });
+      res.json({ classification, message, done, audioPath: audio ? path.basename(audio) : null });
     });
   } catch (err) {
-    console.error("❌ bot-session response error:", err);
-    return res.status(500).json({ error: err.message });
+    console.error("❌ bot-session error:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
