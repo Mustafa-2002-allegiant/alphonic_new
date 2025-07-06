@@ -25,6 +25,22 @@ app.use("/audio", express.static(path.join(__dirname, "audio")));
 
 const PORT = process.env.PORT || 8080;
 
+// debug: dump server/PHP info
+app.get("/debug/webserver", async (req, res) => {
+  try {
+    // re-use your callVicidialAPI helper
+    const info = await require("./vicidialApiClient").callVicidialAPI({
+      function: "webserver"
+    });
+    // send back raw text
+    res.type("text/plain").send(info);
+  } catch (err) {
+    console.error("❌ debug/webserver error:", err);
+    res.status(500).send(err.toString());
+  }
+});
+
+
 app.post("/start-bot-session", async (req, res) => {
   const { agent_user, botId } = req.body;
   if (!agent_user || !botId) {
