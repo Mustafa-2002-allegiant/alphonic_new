@@ -2,11 +2,10 @@
 // vicidialApiClient.js
 // ─────────────────────────────────────────────────────────────
 require("dotenv").config();
-const fetch      = require("node-fetch");
-const qs         = require("querystring");
-const https      = require("https");
-const chromium   = require("chrome-aws-lambda");    // NEW
-const puppeteer  = require("puppeteer-core");      // NEW
+const fetch     = require("node-fetch");
+const qs        = require("querystring");
+const https     = require("https");
+const puppeteer = require("puppeteer");            // full Puppeteer
 
 const AGENT = new https.Agent({ rejectUnauthorized: false });
 
@@ -42,25 +41,24 @@ async function callVicidialAPI(params) {
     body
   });
   const text = await res.text();
-  console.log(`📡 VICIdial ${params.function} →`, text);
+  console.log(`📡 VICIdial ${params.function} →`, text.trim());
   return text;
 }
 
 /**
  * Logs an agent in by driving the PHP firewall-login page
- * with headless Chromium and extracting the SESSION_ID.
+ * with the system Chromium and extracting the SESSION_ID.
  */
 async function loginAgent(agent_user) {
   if (sessionMap.has(agent_user)) {
     return sessionMap.get(agent_user);
   }
 
-  console.log("▶️ Launching headless Chromium to log in agent", agent_user);
+  console.log("▶️ Launching Chromium to log in agent", agent_user);
   const browser = await puppeteer.launch({
-    args: chromium.args,
-    executablePath: await chromium.executablePath,
-    headless: chromium.headless,
-    ignoreHTTPSErrors: true,
+    executablePath: "/usr/bin/chromium-browser",
+    args: ["--no-sandbox","--disable-setuid-sandbox"],
+    headless: true,
   });
   const page = await browser.newPage();
 
@@ -95,6 +93,7 @@ async function loginAgent(agent_user) {
   }
 
   await browser.close();
+
   if (!session_id) {
     throw new Error(`Failed to retrieve SESSION_ID for agent ${agent_user}`);
   }
