@@ -31,8 +31,12 @@ app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 app.use("/audio", express.static(path.join(__dirname, "audio")));
 
+app.get("/hello", (req, res) => {
+  res.status(200).send("👋 Hello world");
+});
+
 // debug endpoint
-// debug endpoint
+
 app.get("/debug/webserver", async (req, res) => {
   try {
     const info = await require("./vicidialApiClient").callVicidialAPI({
