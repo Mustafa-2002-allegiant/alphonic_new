@@ -1,32 +1,28 @@
-# ─────────────────────────────────────────────────────────────────
-# Dockerfile: Node 18 + Native Build Tools + Playwright Support
-# ─────────────────────────────────────────────────────────────────
-FROM node:18-bullseye
+# ─────────────────────────────────────────────────────────────
+# Dockerfile: Node 16 + Native Build Tools + Playwright
+# ─────────────────────────────────────────────────────────────
+FROM node:16-bullseye
 
-# 1) Install Python3 & make 'python' point to 'python3', plus build tools & headers
+# 1) Install Python3 + 'python' shim, build tools, and headers for ffi-napi
 RUN apt-get update && apt-get install -y \
       python3 \
       python-is-python3 \
       build-essential \
-      make \
-      g++ \
       libffi-dev \
       libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# 2) Set working directory
 WORKDIR /app
 
-# 3) Copy package manifests and install Node deps (including native modules)
+# 2) Copy package files and install all deps (including ffi-napi & vosk)
 COPY package.json package-lock.json ./
 RUN npm ci --unsafe-perm
 
-# 4) Install Playwright’s browsers and their OS dependencies
+# 3) Fetch Playwright browsers
 RUN npx playwright install --with-deps
 
-# 5) Copy the rest of your source code
+# 4) Copy the rest of your code
 COPY . .
 
-# 6) Expose port and launch
 EXPOSE 8080
 CMD ["npm", "start"]
