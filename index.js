@@ -34,6 +34,17 @@ app.use("/audio", express.static(path.join(__dirname, "audio")));
 app.get("/hello", (req, res) => {
   res.status(200).send("👋 Hello world");
 });
+// debug endpoint: test only the loginAgent function
+app.get("/debug/login-agent", async (req, res) => {
+  const agent_user = req.query.agent_user || process.env.VICIDIAL_PHONE_LOGIN;
+  try {
+    const session_id = await loginAgent(agent_user);
+    return res.json({ agent_user, session_id });
+  } catch (err) {
+    console.error("❌ debug/login-agent error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 // debug endpoint
 
@@ -55,7 +66,7 @@ app.get("/debug/webserver", async (req, res) => {
 // ─────────────────────────────────────────────────────────────
 app.post("/start-bot-session", async (req, res) => {
 
-  
+
   const { agent_user, botId } = req.body;
   if (!agent_user || !botId) {
     return res.status(400).json({ error: "agent_user and botId required" });
