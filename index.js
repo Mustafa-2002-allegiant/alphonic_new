@@ -54,6 +54,8 @@ app.get("/debug/webserver", async (req, res) => {
 // index.js (only the /start-bot-session route shown)
 // ─────────────────────────────────────────────────────────────
 app.post("/start-bot-session", async (req, res) => {
+
+  
   const { agent_user, botId } = req.body;
   if (!agent_user || !botId) {
     return res.status(400).json({ error: "agent_user and botId required" });
