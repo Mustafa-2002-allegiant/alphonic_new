@@ -37,37 +37,33 @@ async function callVicidialAPI(params) {
 }
 
 async function loginAgent(agent_user) {
-  const form = new URLSearchParams();
-  form.append("user",        API_USER);
-  form.append("pass",        API_PASS);
-  form.append("source",      SOURCE);
-- form.append("function",    "agent_login");    // ← this is wrong: no such function
-+ form.append("function",    "log_agent");      // ← the correct Agent‐API login call
-  form.append("agent_user",  agent_user);
-  form.append("agent_pass",  process.env.VICIDIAL_AGENT_PASS);
-  form.append("phone_login", process.env.VICIDIAL_PHONE_LOGIN);
-  form.append("phone_pass",  process.env.VICIDIAL_PHONE_PASS);
-  form.append("campaign",    CAMPAIGN);
-
-  const resp = await fetch(BASE_URL, {
-    method:  "POST",
-    agent:   AGENT,
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body:    form.toString()
+  // Call via callVicidialAPI so user/pass/source/hasSSL are auto-injected
+  const text = await callVicidialAPI({
+    function:     "log_agent",
+    agent_user,                                 // your agent’s user ID
+    agent_pass:   process.env.VICIDIAL_AGENT_PASS,
+    phone_login:  process.env.VICIDIAL_PHONE_LOGIN,
+    phone_pass:   process.env.VICIDIAL_PHONE_PASS,
+    campaign:     CAMPAIGN,
+    format:       "text"                        // ensure text-mode response
   });
-  const txt = await resp.text();
-  console.log("🔐 log_agent →", txt);
 
-  const m = txt.match(/SESSION_ID=(\d+)/i);
+  console.log("🔐 log_agent →", text);
+
+  // Vicidial typically returns something like "... SESSION_ID=12345 ..."
+  const m = text.match(/SESSION_ID=(\d+)/i);
   if (!m) {
-    throw new Error(`Failed to extract session_id from login response: ${txt}`);
+    throw new Error(`Failed to extract session_id from login response: ${text}`);
   }
+
   const session_id = m[1];
   sessionMap.set(agent_user, session_id);
   return session_id;
 }
 
+
 module.exports = {
+  callVicidialAPI,
   callAgent: async (agent_user) => {
     const session_id = sessionMap.get(agent_user) || await loginAgent(agent_user);
     return callVicidialAPI({

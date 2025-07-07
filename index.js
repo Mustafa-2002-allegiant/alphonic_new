@@ -7,6 +7,7 @@ const cors      = require("cors");
 const path      = require("path");
 const fetch     = require("node-fetch");
 const qs        = require("querystring");
+const { loginAgent, transferCall, callAgent } = require("./vicidialApiClient");
 
 const db                   = require("./firebaseConfig");
 const { speakText }        = require("./TTSService");
@@ -29,6 +30,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use("/audio", express.static(path.join(__dirname, "audio")));
 
 // debug endpoint
+// debug endpoint
 app.get("/debug/webserver", async (req, res) => {
   try {
     const info = await require("./vicidialApiClient").callVicidialAPI({
@@ -41,7 +43,11 @@ app.get("/debug/webserver", async (req, res) => {
   }
 });
 
+
 app.post("/start-bot-session", async (req, res) => {
+  await loginAgent(agent_user);
+  await transferCall(agent_user);
+  await callAgent(agent_user);
   const { agent_user, botId } = req.body;
   if (!agent_user || !botId) {
     return res.status(400).json({ error: "agent_user and botId required" });
