@@ -15,6 +15,7 @@
     "asterisk-ami-client": "^1.1.5",
     "asterisk-manager": "^0.2.0",
     "bcryptjs": "^2.4.3",
+    "chrome-aws-lambda": "^10.1.0",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
@@ -23,7 +24,7 @@
     "mysql": "^2.18.1",
     "mysql2": "^3.14.1",
     "node-fetch": "^2.7.0",
-    "puppeteer": "^24.12.0",
+    "puppeteer-core": "^10.4.0",
     "vosk": "^0.3.39",
     "ws": "^8.18.3"
   }

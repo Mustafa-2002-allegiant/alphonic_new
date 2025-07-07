@@ -2,23 +2,23 @@
 // vicidialApiClient.js
 // ─────────────────────────────────────────────────────────────
 require("dotenv").config();
-const fetch     = require("node-fetch");
-const qs        = require("querystring");
-const https     = require("https");
-const puppeteer = require("puppeteer");       // NEW
+const fetch      = require("node-fetch");
+const qs         = require("querystring");
+const https      = require("https");
+const chromium   = require("chrome-aws-lambda");    // NEW
+const puppeteer  = require("puppeteer-core");      // NEW
 
 const AGENT = new https.Agent({ rejectUnauthorized: false });
 
 // Core Vicidial API URL (for callAgent, etc)
-const BASE_URL  = process.env.VICIDIAL_API_URL;     // e.g. https://host/agc/api.php
-const API_USER  = process.env.VICIDIAL_API_USER;    // your API user
-const API_PASS  = process.env.VICIDIAL_API_PASS;    // your API pass
-const SOURCE    = process.env.VICIDIAL_SOURCE;      // e.g. botapi
-const CAMPAIGN  = process.env.VICIDIAL_CAMPAIGN;    // e.g. 001
+const BASE_URL  = process.env.VICIDIAL_API_URL;    
+const API_USER  = process.env.VICIDIAL_API_USER;   
+const API_PASS  = process.env.VICIDIAL_API_PASS;   
+const SOURCE    = process.env.VICIDIAL_SOURCE;     
+const CAMPAIGN  = process.env.VICIDIAL_CAMPAIGN;   
 
 // The PHP login endpoint your host provides
-const PHP_LOGIN  = process.env.VALIDATE_FIREWALL_URL; 
-// e.g. https://allegientlead.dialerhosting.com:81/validatefirewall.php
+const PHP_LOGIN = process.env.VALIDATE_FIREWALL_URL; 
 
 // In-memory cache: agent_user → session_id
 const sessionMap = new Map();
@@ -41,25 +41,26 @@ async function callVicidialAPI(params) {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body
   });
-
   const text = await res.text();
   console.log(`📡 VICIdial ${params.function} →`, text);
   return text;
 }
 
 /**
- * Logs an agent in by driving the PHP firewall‐login page
- * with Puppeteer and extracting the SESSION_ID.
+ * Logs an agent in by driving the PHP firewall-login page
+ * with headless Chromium and extracting the SESSION_ID.
  */
 async function loginAgent(agent_user) {
-  // Return cached session_id if we have one
   if (sessionMap.has(agent_user)) {
     return sessionMap.get(agent_user);
   }
 
-  console.log("▶️ Launching browser to log in agent", agent_user);
+  console.log("▶️ Launching headless Chromium to log in agent", agent_user);
   const browser = await puppeteer.launch({
-    args: ["--no-sandbox","--disable-setuid-sandbox"]
+    args: chromium.args,
+    executablePath: await chromium.executablePath,
+    headless: chromium.headless,
+    ignoreHTTPSErrors: true,
   });
   const page = await browser.newPage();
 
