@@ -64,6 +64,7 @@ async function loginAgent(agent_user) {
 
 module.exports = {
   callVicidialAPI,
+  loginAgent,
   callAgent: async (agent_user) => {
     const session_id = sessionMap.get(agent_user) || await loginAgent(agent_user);
     return callVicidialAPI({

@@ -7,7 +7,7 @@ const cors      = require("cors");
 const path      = require("path");
 const fetch     = require("node-fetch");
 const qs        = require("querystring");
-const { loginAgent, transferCall, callAgent } = require("./vicidialApiClient");
+
 
 const db                   = require("./firebaseConfig");
 const { speakText }        = require("./TTSService");
@@ -15,6 +15,8 @@ const { recognizeLiveAudio } = require("./liveSTTHandler");
 const classifyResponse     = require("./classifyResponse");
 
 const {
+  callVicidialAPI,       // for /debug/webserver
+  loginAgent,            // if you choose to explicitly log in
   callAgent,
   getRecordingStatus,
   hangupCall,
