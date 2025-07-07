@@ -50,48 +50,67 @@ app.get("/debug/webserver", async (req, res) => {
 });
 
 
+// ─────────────────────────────────────────────────────────────
+// index.js (only the /start-bot-session route shown)
+// ─────────────────────────────────────────────────────────────
 app.post("/start-bot-session", async (req, res) => {
-  await loginAgent(agent_user);
-  await transferCall(agent_user);
-  await callAgent(agent_user);
   const { agent_user, botId } = req.body;
   if (!agent_user || !botId) {
     return res.status(400).json({ error: "agent_user and botId required" });
   }
 
   try {
+    // 1) Log the agent in and store session_id
+    console.log("🔐 loginAgent for", agent_user);
+    await loginAgent(agent_user);
+
+    // 2) Transfer the call into a conference with the agent
+    console.log("📞 transferCall for", agent_user);
     await transferCall(agent_user);
+
+    // 3) Dial the agent from that conference
+    console.log("📡 callAgent for", agent_user);
     await callAgent(agent_user);
+
+    // 4) Optionally start recording
+    console.log("🎙 getRecordingStatus for", agent_user);
     await getRecordingStatus(agent_user);
 
+    // 5) Fetch your bot script from Firestore
     const botDoc = await db.collection("bots").doc(botId).get();
     if (!botDoc.exists) {
+      console.log("❌ Bot not found:", botId);
       return res.status(404).json({ error: "Bot not found" });
     }
 
-    const script   = botDoc.data().script || [];
-    const voice    = botDoc.data().voice  || "en-US-Wavenet-F";
+    const script    = botDoc.data().script || [];
+    const voice     = botDoc.data().voice  || "en-US-Wavenet-F";
     const audioPath = await speakText(script[0], voice);
 
+    // 6) Create a session document
     const sessionRef = await db.collection("bot_sessions").add({
-      botId, agent_user,
+      botId,
+      agent_user,
       currentStep: 0,
       responses:   [],
       done:        false,
-      createdAt:   new Date().toISOString()
+      createdAt:   new Date().toISOString(),
     });
 
-    res.json({
+    // 7) Return the first question + audio
+    return res.json({
       sessionId: sessionRef.id,
       question:  script[0],
       audioPath: path.basename(audioPath),
-      step:      0
+      step:      0,
     });
+
   } catch (err) {
     console.error("❌ start-bot-session error:", err);
-    res.status(500).json({ error: err.message });
+    return res.status(500).json({ error: err.message });
   }
 });
+
 
 app.post("/bot-session/:sessionId/respond", async (req, res) => {
   const { sessionId } = req.params;
