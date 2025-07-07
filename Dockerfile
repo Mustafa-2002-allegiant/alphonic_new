@@ -1,9 +1,9 @@
 # ─────────────────────────────────────────────────────────────
-# Dockerfile: Node 16 + Native Build Tools + Playwright
+# Dockerfile: Node 16 base + native build + Playwright
 # ─────────────────────────────────────────────────────────────
 FROM node:16-bullseye
 
-# 1) Install Python3 + 'python' shim, build tools, and headers for ffi-napi
+# 1) Install Python3 & build tools for native modules
 RUN apt-get update && apt-get install -y \
       python3 \
       python-is-python3 \
@@ -12,17 +12,16 @@ RUN apt-get update && apt-get install -y \
       libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# 2) Set working directory
 WORKDIR /app
 
-# 2) Copy package files and install all deps (including ffi-napi & vosk)
-COPY package.json package-lock.json ./
-RUN npm ci --unsafe-perm
-
-# 3) Fetch Playwright browsers
-RUN npx playwright install --with-deps
-
-# 4) Copy the rest of your code
+# 3) Copy everything (including index.js!)
 COPY . .
 
+# 4) Install Node dependencies (including ffi-napi, vosk) and Playwright
+RUN npm ci --unsafe-perm \
+ && npx playwright install --with-deps
+
+# 5) Expose your port & start the app
 EXPOSE 8080
 CMD ["npm", "start"]
