@@ -2,23 +2,27 @@
 // vicidialApiClient.js
 // ─────────────────────────────────────────────────────────────
 require("dotenv").config();
-const fetch = require("node-fetch");
-const qs    = require("querystring");
-const https = require("https");
+const fetch     = require("node-fetch");
+const qs        = require("querystring");
+const https     = require("https");
+const { chromium } = require("playwright");  // USE PLAYWRIGHT
 
-const AGENT = new https.Agent({ rejectUnauthorized: false });
+const AGENT     = new https.Agent({ rejectUnauthorized: false });
 
 // core AGC API
-const BASE_URL = process.env.VICIDIAL_API_URL;
-const API_USER = process.env.VICIDIAL_API_USER;
-const API_PASS = process.env.VICIDIAL_API_PASS;
-const SOURCE   = process.env.VICIDIAL_SOURCE;
-const CAMPAIGN = process.env.VICIDIAL_CAMPAIGN;
+const BASE_URL  = process.env.VICIDIAL_API_URL;
+const API_USER  = process.env.VICIDIAL_API_USER;
+const API_PASS  = process.env.VICIDIAL_API_PASS;
+const SOURCE    = process.env.VICIDIAL_SOURCE;
+const CAMPAIGN  = process.env.VICIDIAL_CAMPAIGN;
 
 // your PHP firewall login URL
 const PHP_LOGIN = process.env.VALIDATE_FIREWALL_URL;
+if (!PHP_LOGIN || !/^https?:\/\//.test(PHP_LOGIN)) {
+  throw new Error("Missing or invalid VALIDATE_FIREWALL_URL");
+}
 
-// cache agent → session
+// in-memory cache: agent_user → session_id
 const sessionMap = new Map();
 
 async function callVicidialAPI(params) {
@@ -29,7 +33,6 @@ async function callVicidialAPI(params) {
     hasSSL: "true",
     ...params
   });
-
   const res = await fetch(BASE_URL, {
     method:  "POST",
     agent:   AGENT,
@@ -41,14 +44,25 @@ async function callVicidialAPI(params) {
   return text;
 }
 
+/**
+ * Logs the agent in by POST-ing to your PHP firewall page
+ * and pulling SESSION_ID out of the 302 Location header
+ * or from the HTML response body.
+ */
 async function loginAgent(agent_user) {
-  // return cached if we already have it
   if (sessionMap.has(agent_user)) {
+    console.log("🔑 [cached] SESSION_ID for", agent_user, "→", sessionMap.get(agent_user));
     return sessionMap.get(agent_user);
   }
 
-  // build form body for PHP login
-  const body = qs.stringify({
+  console.log("▶️  Starting headless login for agent", agent_user);
+  const browser = await chromium.launch({ headless: true });
+  const page    = await browser.newPage({ 
+    ignoreHTTPSErrors: true, 
+  });
+
+  // instead of filling forms, we can directly POST via page.request
+  const postBody = qs.stringify({
     user:        API_USER,
     pass:        API_PASS,
     agent_user,
@@ -58,35 +72,38 @@ async function loginAgent(agent_user) {
     campaign:    CAMPAIGN,
   });
 
-  // POST without following redirects
-  const res = await fetch(PHP_LOGIN, {
+  // do the POST without auto-redirect (302)
+  const resp = await page.request.fetch(PHP_LOGIN, {
     method:   "POST",
-    agent:    AGENT,
-    redirect: "manual",
     headers:  { "Content-Type": "application/x-www-form-urlencoded" },
-    body
+    body:     postBody,
+    redirect: "manual"
   });
+  console.log("🔁  HTTP", resp.status(), resp.statusText());
 
-  // 1) Try to grab SESSION_ID from `Location:` header
+  // 1) check Location header
   let session_id = null;
-  const loc = res.headers.get("location");
-  if (loc) {
-    const m = loc.match(/SESSION_ID=(\d+)/i);
+  const location = resp.headers()["location"];
+  console.log("📥  Location header:", location);
+  if (location) {
+    const m = location.match(/SESSION_ID=(\d+)/i);
     if (m) session_id = m[1];
   }
 
-  // 2) If no header, fetch the HTML and scrape it
+  // 2) fallback to scraping the body
   if (!session_id) {
-    const text = await res.text();
-    const m = text.match(/SESSION_ID=(\d+)/i);
+    const html = await resp.text();
+    console.log("📄  Response HTML snippet:", html.slice(0,500).replace(/\n/g," "));
+    const m = html.match(/SESSION_ID=(\d+)/i);
     if (m) session_id = m[1];
   }
 
+  await browser.close();
   if (!session_id) {
     throw new Error("loginAgent: could not extract SESSION_ID");
   }
 
-  console.log("🔐 loginAgent →", session_id);
+  console.log("🔐  loginAgent →", session_id);
   sessionMap.set(agent_user, session_id);
   return session_id;
 }
