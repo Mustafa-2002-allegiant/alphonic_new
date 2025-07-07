@@ -1,2 +1,6 @@
-vosk-server/docker
-Dockerfile
+*
+!.env
+!package.json
+!package-lock.json
+!Aptfile
+!src/**         # adjust if your code lives under src/
