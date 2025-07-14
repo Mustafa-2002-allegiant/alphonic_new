@@ -38,6 +38,20 @@ async function callVicidialAPI(params) {
   return text;
 }
 
+// Function to manually set session ID from web login
+function setWebSessionId(agent_user, sessionId) {
+  console.log(`🔗 Setting web session ID for ${agent_user}: ${sessionId}`);
+  sessionMap.set(agent_user, sessionId);
+}
+
+// Function to get existing session ID without API login
+function getSessionId(agent_user) {
+  if (!sessionMap.has(agent_user)) {
+    throw new Error(`No session found for agent ${agent_user}. Please login via web interface first.`);
+  }
+  return sessionMap.get(agent_user);
+}
+
 async function loginAgent(agent_user) {
   if (sessionMap.has(agent_user)) {
     console.log("🔑 [cache] SESSION_ID for", agent_user, "→", sessionMap.get(agent_user));
@@ -46,11 +60,11 @@ async function loginAgent(agent_user) {
 
   console.log("▶️  loginAgent via AGC for", agent_user);
   const respText = await callVicidialAPI({
-    function:     "log_agent",            // AGC’s built-in agent login
+    function:     "log_agent",            // AGC's built-in agent login
     agent_user,
-    agent_pass:   process.env.VICIDIAL_AGENT_PASS,
-    phone_login:  process.env.VICIDIAL_PHONE_LOGIN,
-    phone_pass:   process.env.VICIDIAL_PHONE_PASS,
+    agent_pass:   "hello123",             // Use the standard password
+    phone_login:  agent_user,             // Use agent_user as phone_login
+    phone_pass:   "hello123",             // Use the standard password
     campaign:     CAMPAIGN,
     format:       "text"
   });
@@ -71,6 +85,9 @@ async function loginAgent(agent_user) {
 module.exports = {
   callVicidialAPI,
   loginAgent,
+  setWebSessionId,  // NEW: Set session ID from web login
+  getSessionId,     // NEW: Get existing session ID
+  sessionMap,       // Expose for testing
 
   callAgent: async (agent_user) => {
     const session_id = await loginAgent(agent_user);

@@ -15,6 +15,8 @@ const { recognizeLiveAudio } = require("./liveSTTHandler");
 const classifyResponse     = require("./classifyResponse");
 
 const {
+  setWebSessionId,       // NEW: To set the session ID from web
+  getSessionId,          // NEW: To get existing session ID
   callVicidialAPI,       // for /debug/webserver
   loginAgent,            // if you choose to explicitly log in
   callAgent,
@@ -46,6 +48,45 @@ app.get("/debug/login-agent", async (req, res) => {
   }
 });
 
+// NEW: Endpoint to login agent via web interface and store session ID
+app.post("/web-login-agent", async (req, res) => {
+  const { agent_user } = req.body;
+  if (!agent_user) {
+    return res.status(400).json({ error: "agent_user required" });
+  }
+  
+  try {
+    console.log(`🌐 Starting web login for agent: ${agent_user}`);
+    
+    // Use VicidialWebAutomation to login via web interface
+    const VicidialWebAutomation = require('./vicidialWebAutomation');
+    const automation = new VicidialWebAutomation();
+    
+    await automation.initialize();
+    
+    // Login agent and get the real ViciDial session ID
+    const webSessionId = await automation.loginAgent(agent_user, process.env.VICIDIAL_AGENT_PASS);
+    
+    // Store this session ID in our API client for future API calls
+    setWebSessionId(agent_user, webSessionId);
+    
+    await automation.close();
+    
+    console.log(`✅ Web login successful. Session ID stored: ${webSessionId}`);
+    
+    return res.json({
+      success: true,
+      agent_user,
+      sessionId: webSessionId,
+      message: "Agent logged in via web interface, session ID stored for API calls"
+    });
+    
+  } catch (err) {
+    console.error("❌ web-login-agent error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
 // debug endpoint
 
 app.get("/debug/webserver", async (req, res) => {
@@ -73,9 +114,10 @@ app.post("/start-bot-session", async (req, res) => {
   }
 
   try {
-    // 1) Log the agent in and store session_id
-    console.log("🔐 loginAgent for", agent_user);
-    await loginAgent(agent_user);
+    // 1) Get the existing web session ID (agent must be logged in via /web-login-agent first)
+    console.log("🔍 Getting existing web session for", agent_user);
+    const vicidialSessionId = getSessionId(agent_user);
+    console.log("✅ Using existing ViciDial session ID:", vicidialSessionId);
 
     // 2) Transfer the call into a conference with the agent
     console.log("📞 transferCall for", agent_user);
@@ -100,19 +142,25 @@ app.post("/start-bot-session", async (req, res) => {
     const voice     = botDoc.data().voice  || "en-US-Wavenet-F";
     const audioPath = await speakText(script[0], voice);
 
-    // 6) Create a session document
+    // 6) Create a session document with BOTH IDs
     const sessionRef = await db.collection("bot_sessions").add({
       botId,
       agent_user,
+      vicidialSessionId,     // ← Store the REAL ViciDial session ID
+      firestoreSessionId: null,  // Will be set after creation
       currentStep: 0,
       responses:   [],
       done:        false,
       createdAt:   new Date().toISOString(),
     });
 
-    // 7) Return the first question + audio
+    // Update with Firestore session ID for tracking
+    await sessionRef.update({ firestoreSessionId: sessionRef.id });
+
+    // 7) Return the ViciDial session ID (NOT the Firestore ID)
     return res.json({
-      sessionId: sessionRef.id,
+      sessionId: vicidialSessionId,     // ← Return the REAL ViciDial session ID
+      firestoreId: sessionRef.id,      // ← Also return Firestore ID for tracking
       question:  script[0],
       audioPath: path.basename(audioPath),
       step:      0,
@@ -126,16 +174,23 @@ app.post("/start-bot-session", async (req, res) => {
 
 
 app.post("/bot-session/:sessionId/respond", async (req, res) => {
-  const { sessionId } = req.params;
+  const { sessionId } = req.params;  // This is now the ViciDial session ID
   const audioBuffer   = req.body.audio;
   if (!audioBuffer) return res.status(400).json({ error: "audio required" });
 
   try {
-    const sessionRef = db.collection("bot_sessions").doc(sessionId);
-    const sessionDoc = await sessionRef.get();
-    if (!sessionDoc.exists) {
+    // Find session by ViciDial session ID instead of Firestore ID
+    const sessionQuery = await db.collection("bot_sessions")
+      .where("vicidialSessionId", "==", sessionId)
+      .limit(1)
+      .get();
+    
+    if (sessionQuery.empty) {
       return res.status(404).json({ error: "Session not found" });
     }
+    
+    const sessionDoc = sessionQuery.docs[0];
+    const sessionRef = sessionDoc.ref;
 
     const session = sessionDoc.data();
     if (session.done) {
@@ -273,6 +328,83 @@ app.post("/assign-bot-to-agent-and-campaign", async (req, res) => {
 
     const botResult = JSON.parse(bodyText);
     return res.json({ success: true, botResult });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// NEW: Enhanced bot assignment with automatic agent login
+app.post("/assign-bot-with-auto-login", async (req, res) => {
+  const { botId, campaignId, agentUser } = req.body;
+  if (!botId || !campaignId || !agentUser) {
+    return res.status(400).json({ error: "botId, campaignId and agentUser are required" });
+  }
+
+  // Validate agent user is in valid range (8001-8030)
+  const agentNumber = parseInt(agentUser);
+  if (agentNumber < 8001 || agentNumber > 8030) {
+    return res.status(400).json({ error: "Agent user must be between 8001 and 8030" });
+  }
+
+  try {
+    console.log(`🚀 Starting enhanced bot assignment for agent: ${agentUser}`);
+    
+    // Use the enhanced assignment function
+    const { assignBotToAgent } = require('./assignBotToCampaign');
+    const assignment = await assignBotToAgent(botId, campaignId, agentUser);
+    
+    console.log(`✅ Enhanced assignment completed:`, assignment);
+    
+    return res.json({
+      success: true,
+      message: "Bot assigned to agent with automatic login",
+      data: assignment
+    });
+    
+  } catch (err) {
+    console.error(`❌ Enhanced assignment failed:`, err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// NEW: Refresh agent session endpoint
+app.post("/refresh-agent-session", async (req, res) => {
+  const { agentUser } = req.body;
+  if (!agentUser) {
+    return res.status(400).json({ error: "agentUser is required" });
+  }
+
+  try {
+    console.log(`🔄 Refreshing session for agent: ${agentUser}`);
+    
+    const { refreshAgentSession } = require('./assignBotToCampaign');
+    const newSessionId = await refreshAgentSession(agentUser);
+    
+    return res.json({
+      success: true,
+      message: "Agent session refreshed successfully",
+      agentUser,
+      sessionId: newSessionId
+    });
+    
+  } catch (err) {
+    console.error(`❌ Session refresh failed:`, err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// NEW: Get available agents endpoint
+app.get("/available-agents", (req, res) => {
+  try {
+    const { getAvailableAgents } = require('./assignBotToCampaign');
+    const agents = getAvailableAgents();
+    
+    return res.json({
+      success: true,
+      agents,
+      count: agents.length
+    });
+    
   } catch (err) {
     return res.status(500).json({ error: err.message });
   }
